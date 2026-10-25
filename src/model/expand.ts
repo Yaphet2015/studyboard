@@ -1,6 +1,7 @@
 import { probeBrief } from "./probe";
 import type { Board, ConceptNode, DepthType } from "../shared/types";
 import { angleRule, type DigAngle } from "./angles";
+import { LIMITS } from "../shared/validation";
 
 export const DEPTH_LABEL: Record<DepthType, string> = {
   what: "是什么",
@@ -63,4 +64,13 @@ function basePrompt(title: string, ladder: string, known: string[]): string {
 export function hintCardNote(title: string): string {
   return `
 学习者从提示里选了这个方向：「${title.slice(0, 80)}」。只生成这 1 张卡：标题可以改写成一句结论，但必须讲这个点；正文和检查题照常给出。`;
+}
+
+/**
+ * 重做下层: the learner's own rule for how the cards below this one are cut. It overrides the usual
+ * 2–4 cards, because 「每个 Skill 一张」 can need a dozen; everything else (gate, check question) is unchanged.
+ */
+export function reExpandNote(instruction: string): string {
+  return `
+学习者要求重做这张卡的下一层，要求是：「${instruction.slice(0, 200)}」。以这个要求为准，它覆盖上面「2–4 个」「2–3 个」的数量建议：按要求需要几张就生成几张，最多 ${LIMITS.expansionCards} 张；每张卡是 anchor 的直接子卡，parent 都写 "anchor"，不要再往下嵌套。画布上这张卡现在没有子卡，不用避开旧的内容。按学习者的拆法分，不要换成你自己的分法。`;
 }
