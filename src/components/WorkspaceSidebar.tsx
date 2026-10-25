@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import {
   Archive,
   ChevronRight,
+  ChevronDown,
   Compass,
   LoaderCircle,
   MessageSquare,
@@ -22,11 +23,15 @@ import type { BoardSummary } from "../shared/types";
 import { api } from "../api";
 import {
   listSessions,
+  visibleSessions,
+  filterSessions,
   sessionClock,
   type SessionEntry,
 } from "../model/sessions";
 import { MOD } from "../model/shortcuts";
 import { tip } from "./Tooltip";
+
+const SESSION_VIEW_KEY = "studyboard.sidebar.sessions.v1";
 
 export const SIDEBAR_DEFAULT_WIDTH = 256;
 export const SIDEBAR_MIN_WIDTH = 200;
@@ -52,7 +57,7 @@ type WorkspaceSidebarProps = {
   onSettings: () => void;
   sessions: SessionEntry[];
   currentSessionId?: string;
-  onOpenSession: (boardId: string, sessionId: string) => void;
+  onOpenSession: (boardId: string, sessionId: string) => Promise<void>;
   onNewSession: () => void;
 };
 
@@ -65,7 +70,7 @@ type BoardGroupProps = {
   currentSessionId?: string;
   onPick: () => void;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
-  onOpenSession: (sessionId: string) => void;
+  onOpenSession: (sessionId: string) => Promise<void>;
   onNewSession: () => void;
 };
 
@@ -86,20 +91,79 @@ function BoardGroup({
   onOpenSession,
   onNewSession,
 }: BoardGroupProps): ReactElement {
-  const [expanded, setExpanded] = useState(false);
+  const [view, setView] = useState(() => {
+    try {
+      return (
+        JSON.parse(localStorage.getItem(SESSION_VIEW_KEY) ?? "{}")[
+          board.id
+        ] ?? { open: false, all: false }
+      );
+    } catch {
+      return { open: false, all: false };
+    }
+  });
+  const expanded = view.open === true;
+  function updateView(patch: { open?: boolean; all?: boolean }): void {
+    const next = { ...view, ...patch };
+    setView(next);
+    try {
+      const saved = JSON.parse(localStorage.getItem(SESSION_VIEW_KEY) ?? "{}");
+      localStorage.setItem(
+        SESSION_VIEW_KEY,
+        JSON.stringify({ ...saved, [board.id]: next }),
+      );
+    } catch {
+      /* Storage can be unavailable. */
+    }
+  }
+  const [query, setQuery] = useState("");
+  const [opening, setOpening] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+  const cache = useRef<{
+    stamp: string;
+    retry: number;
+    entries: SessionEntry[];
+  } | null>(null);
+  useEffect(() => {
+    if (expanded && currentSessionId && current)
+      activeRef.current?.scrollIntoView({ block: "nearest" });
+  }, [expanded, currentSessionId, current]);
+  async function open(id: string): Promise<void> {
+    if (opening || switchingId) return;
+    setOpening(id);
+    setOpenError(null);
+    try {
+      await onOpenSession(id);
+      updateView({ open: true });
+    } catch {
+      setOpenError(id);
+    } finally {
+      setOpening(null);
+    }
+  }
   const [savedSessions, setSavedSessions] = useState<SessionLoadState>({
     status: "loading",
   });
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (current || !expanded || collapsed) return;
+    if (
+      cache.current?.stamp === board.updatedAt &&
+      cache.current.retry === retry
+    ) {
+      setSavedSessions({ status: "ready", entries: cache.current.entries });
+      return;
+    }
     let cancelled = false;
     setSavedSessions({ status: "loading" });
     void api.loadBoard(board.id).then(
       (value) => {
         if (cancelled) return;
         if (value) {
-          setSavedSessions({ status: "ready", entries: listSessions(value) });
+          const entries = listSessions(value);
+          cache.current = { stamp: board.updatedAt, retry, entries };
+          setSavedSessions({ status: "ready", entries });
         } else {
           setSavedSessions({ status: "error", message: "画布不存在" });
         }
@@ -113,55 +177,128 @@ function BoardGroup({
       cancelled = true;
     };
   }, [board.id, board.updatedAt, current, expanded, collapsed, retry]);
+  useEffect(() => {
+    if (current)
+      cache.current = { stamp: board.updatedAt, retry, entries: sessions };
+  }, [current, board.updatedAt, retry, sessions]);
   const sessionState: SessionLoadState = current
     ? { status: "ready", entries: sessions }
     : savedSessions;
-  const disabled = switchingId !== null;
+  const disabled = switchingId !== null || opening !== null;
   const activeSessionId = current ? currentSessionId : undefined;
+  const count = current
+    ? sessions.length
+    : sessionState.status === "ready"
+      ? sessionState.entries.length
+      : board.sessionCount;
+  const filtered =
+    sessionState.status === "ready"
+      ? filterSessions(sessionState.entries, query)
+      : [];
+  const { rows, hidden } = visibleSessions(
+    filtered,
+    activeSessionId,
+    view.all || !!query.trim(),
+  );
+  const disclosureLabel = `${expanded ? "收起" : "展开"}对话（${count ?? "未知"}）`;
   let sessionItems: ReactNode;
   if (sessionState.status === "error") {
     sessionItems = (
       <li className="workspace-empty" role="alert">
-        {sessionState.message}。
+        无法读取对话 ·
         <button onClick={() => setRetry((value) => value + 1)}>重试</button>
       </li>
     );
   } else if (sessionState.status === "loading") {
     sessionItems = (
-      <li className="workspace-empty" role="status">
-        正在读取对话…
+      <li role="status">
+        <div className="workspace-empty">正在读取对话…</div>
+        {Array.from({ length: Math.min(count ?? 3, 3) }, (_, i) => (
+          <div
+            className="workspace-session-skeleton"
+            aria-hidden="true"
+            key={i}
+          >
+            <i />
+            <i />
+          </div>
+        ))}
       </li>
     );
   } else if (!sessionState.entries.length) {
     sessionItems = <li className="workspace-empty">还没有对话</li>;
   } else {
-    sessionItems = sessionState.entries.map((session) => (
-      <li key={session.id}>
-        <button
-          className="workspace-session"
-          title={`${session.title} · ${session.anchorTitle} · ${sessionClock(session.time)}`}
-          aria-current={session.id === activeSessionId ? "true" : undefined}
-          disabled={disabled}
-          onClick={() => onOpenSession(session.id)}
-        >
-          <MessageSquare size={14} className="ico" />
-          <span>{session.title}</span>
-        </button>
-      </li>
-    ));
+    sessionItems = rows.length ? (
+      rows.map((session) => (
+        <li key={session.id} role="none">
+          <button
+            ref={session.id === activeSessionId ? activeRef : undefined}
+            role="treeitem"
+            className="workspace-session"
+            title={`${session.title} · ${session.anchorTitle} · ${sessionClock(session.time)}`}
+            aria-current={session.id === activeSessionId ? "page" : undefined}
+            aria-busy={opening === session.id}
+            disabled={disabled}
+            onClick={() => void open(session.id)}
+          >
+            {opening === session.id && (
+              <span aria-hidden="true" className="workspace-session-spinner spin" />
+            )}
+            <span className="workspace-session-title">{session.title}</span>
+            <span className="workspace-session-meta">
+              <span>{session.anchorTitle || "自由批注"}</span>
+              <time>· {sessionClock(session.time)}</time>
+            </span>
+          </button>
+          {openError === session.id && (
+            <div
+              className="workspace-empty workspace-session-error"
+              role="alert"
+            >
+              无法打开 ·{" "}
+              <button onClick={() => void open(session.id)}>重试</button>
+            </div>
+          )}
+        </li>
+      ))
+    ) : (
+      <li className="workspace-empty">没有匹配的对话</li>
+    );
   }
   return (
-    <li>
-      <div className="workspace-board-row">
+    <li
+      role="treeitem"
+      aria-label={board.title}
+      aria-current={current ? "true" : undefined}
+      aria-expanded={collapsed ? undefined : expanded}
+      onKeyDown={(e) => {
+        if (
+          e.target instanceof HTMLInputElement ||
+          (e.target as HTMLElement).closest(".workspace-sessions")
+        )
+          return;
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          e.preventDefault();
+          e.stopPropagation();
+          updateView({ open: e.key === "ArrowRight" });
+        }
+      }}
+    >
+      <div
+        onClick={(e) => {
+          if (!(e.target as HTMLElement).closest("button")) onPick();
+        }}
+        className={`workspace-board-row ${current ? "is-current" : ""} ${count ? "has-sessions" : ""}`}
+      >
         {!collapsed && (
           <button
-            className="workspace-disclosure"
-            aria-label={`${expanded ? "收起" : "展开"}${board.title}的对话`}
+            className={`workspace-disclosure ${count === 0 ? "is-empty" : ""}`}
+            aria-label={disclosureLabel}
             aria-expanded={expanded}
-            aria-controls={`board-sessions-${board.id}`}
-            onClick={() => setExpanded((value) => !value)}
+            aria-controls={`sessions-${board.id}`}
+            onClick={() => updateView({ open: !expanded })}
           >
-            <ChevronRight size={14} />
+            <ChevronRight size={16} />
           </button>
         )}
         <button
@@ -187,13 +324,17 @@ function BoardGroup({
                 <i
                   className="workspace-rail-bar"
                   aria-hidden="true"
-                  style={{ ["--p" as string]: `${Math.round(((board.sealed ?? 0) / board.total) * 100)}%` }}
+                  style={{
+                    ["--p" as string]: `${Math.round(((board.sealed ?? 0) / board.total) * 100)}%`,
+                  }}
                 />
               )}
             </>
           ) : (
             <>
-              <span className="workspace-copy workspace-board-title">{board.title}</span>
+              <span className="workspace-copy workspace-board-title">
+                {board.title}
+              </span>
               <span className="workspace-meta">
                 {board.done ? (
                   <span className="workspace-done">
@@ -220,15 +361,53 @@ function BoardGroup({
             </>
           )}
         </button>
+        {!collapsed && !!count && (
+          <button
+            className={`workspace-session-count ${current && !!currentSessionId && !expanded ? "is-open" : ""}`}
+            aria-label={disclosureLabel}
+            aria-expanded={expanded}
+            aria-controls={`sessions-${board.id}`}
+            onClick={() => updateView({ open: !expanded })}
+          >
+            <MessageSquare size={12} />
+            <span>{count}</span>
+          </button>
+        )}
       </div>
       {!collapsed && (
         <ul
-          id={`board-sessions-${board.id}`}
+          id={`sessions-${board.id}`}
+          role="group"
           className="workspace-sessions"
           aria-label={`${board.title}的对话`}
           hidden={!expanded}
         >
+          {sessionState.status === "ready" &&
+            sessionState.entries.length > 20 && (
+              <li>
+                <label className="workspace-session-search">
+                  <Search size={13} />
+                  <input
+                    aria-label={`搜索${board.title}的对话`}
+                    placeholder="搜索对话"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                </label>
+              </li>
+            )}
           {sessionItems}
+          {hidden > 0 && (
+            <li>
+              <button
+                className="workspace-session-more"
+                onClick={() => updateView({ all: true })}
+              >
+                <ChevronDown size={14} />
+                展开更多 · 还有 {hidden} 个
+              </button>
+            </li>
+          )}
           {current && (
             <li>
               <button
@@ -236,7 +415,7 @@ function BoardGroup({
                 disabled={disabled}
                 onClick={onNewSession}
               >
-                <Plus size={14} className="ico" />
+                <Plus size={13} className="ico" />
                 新对话
               </button>
             </li>
@@ -248,7 +427,13 @@ function BoardGroup({
 }
 
 /** One segment per card (a long list becomes one proportional bar); sealed segments are filled. */
-function Segments({ sealed, total }: { sealed: number; total: number }): ReactElement {
+function Segments({
+  sealed,
+  total,
+}: {
+  sealed: number;
+  total: number;
+}): ReactElement {
   if (total > 12)
     return (
       <span className="workspace-segs long" aria-hidden="true">
@@ -269,7 +454,8 @@ function Segments({ sealed, total }: { sealed: number; total: number }): ReactEl
 export function relativeDay(iso: string, today = new Date()): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const day = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((day(today) - day(d)) / 86_400_000);
   if (diff === 0) return "今天";
   if (diff === 1) return "昨天";
@@ -345,6 +531,17 @@ export function WorkspaceSidebar({
     }
     return () => onResizingChange(false);
   }, [collapsed, onResizingChange]);
+  useEffect(() => {
+    if (!boards.length) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(SESSION_VIEW_KEY) ?? "{}");
+      for (const id of Object.keys(saved))
+        if (!boards.some((b) => b.id === id)) delete saved[id];
+      localStorage.setItem(SESSION_VIEW_KEY, JSON.stringify(saved));
+    } catch {
+      /* Storage can be unavailable. */
+    }
+  }, [boards]);
   const search = query.trim().toLocaleLowerCase();
   const visibleBoards = collapsed
     ? boards
@@ -368,17 +565,11 @@ export function WorkspaceSidebar({
           id: b.id,
           x: Math.max(
             8,
-            Math.min(
-              event.clientX || box.left,
-              window.innerWidth - 184,
-            ),
+            Math.min(event.clientX || box.left, window.innerWidth - 184),
           ),
           y: Math.max(
             8,
-            Math.min(
-              event.clientY || box.bottom,
-              window.innerHeight - 56,
-            ),
+            Math.min(event.clientY || box.bottom, window.innerHeight - 56),
           ),
           trigger: event.currentTarget,
         });
@@ -388,8 +579,16 @@ export function WorkspaceSidebar({
     />
   );
   const groups = [
-    { key: "active", label: "进行中", items: visibleBoards.filter((b) => !b.done) },
-    { key: "done", label: "已完成", items: visibleBoards.filter((b) => b.done) },
+    {
+      key: "active",
+      label: "进行中",
+      items: visibleBoards.filter((b) => !b.done),
+    },
+    {
+      key: "done",
+      label: "已完成",
+      items: visibleBoards.filter((b) => b.done),
+    },
   ];
 
   return (
@@ -420,12 +619,20 @@ export function WorkspaceSidebar({
           aria-controls="workspace-navigation"
           onClick={onToggle}
         >
-          {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          {collapsed ? (
+            <PanelLeftOpen size={18} />
+          ) : (
+            <PanelLeftClose size={18} />
+          )}
         </button>
       </header>
       <div className="workspace-actions">
         {collapsed ? (
-          <button className="workspace-icon" {...tip("搜索画布与卡片", `${MOD}K`)} onClick={onSearch}>
+          <button
+            className="workspace-icon"
+            {...tip("搜索画布与卡片", `${MOD}K`)}
+            onClick={onSearch}
+          >
             <Search size={15} strokeWidth={2} />
           </button>
         ) : (
@@ -460,15 +667,44 @@ export function WorkspaceSidebar({
         id="workspace-navigation"
         className="workspace-navigation"
         aria-label="知识画布"
+        onKeyDown={(e) => {
+          if (
+            e.target instanceof HTMLInputElement ||
+            !["ArrowUp", "ArrowDown"].includes(e.key)
+          )
+            return;
+          const items = Array.from(
+            e.currentTarget.querySelectorAll<HTMLButtonElement>(
+              ".workspace-board, .workspace-session, .workspace-session-more, .workspace-empty button",
+            ),
+          ).filter((el) => !el.disabled && !el.closest("[hidden]") && el.getClientRects().length > 0);
+          const index = items.indexOf(e.target as HTMLButtonElement);
+          if (index < 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          items[
+            Math.max(
+              0,
+              Math.min(
+                items.length - 1,
+                index + (e.key === "ArrowDown" ? 1 : -1),
+              ),
+            )
+          ]?.focus();
+        }}
         aria-busy={switchingId !== null}
       >
-        <div className="workspace-board-list">
+        <div className="workspace-board-list" role="tree" aria-label="知识画布">
           {!boards.length && !collapsed ? (
             <p className="workspace-start">提一个问题，开始第一张画布</p>
           ) : (
             groups.map((g) =>
               g.items.length ? (
-                <section key={g.key} className="workspace-group" aria-label={g.label}>
+                <section
+                  key={g.key}
+                  className="workspace-group"
+                  aria-label={g.label}
+                >
                   {!collapsed && (
                     <h2 className="workspace-section">
                       {g.label} <span>{g.items.length}</span>

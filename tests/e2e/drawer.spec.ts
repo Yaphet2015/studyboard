@@ -109,10 +109,10 @@ test("single clicks follow the selected card and keep canvas shortcuts usable", 
   await page
     .locator('.workspace-board[aria-current="page"]')
     .locator("..")
-    .getByRole("button", { name: /^展开/ })
+    .locator(".workspace-disclosure")
     .click();
   await expect(
-    page.locator('.workspace-session[aria-current="true"]'),
+    page.locator('.workspace-session[aria-current="page"]'),
   ).toContainText("保什么");
   await page
     .locator(".react-flow__pane")

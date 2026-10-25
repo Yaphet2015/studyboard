@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createWalkthroughBoard, newNote } from "../src/model/boards";
 import {
   latestNoteOn,
+  visibleSessions,
+  filterSessions,
   listSessions,
   sessionClock,
   stripOrder,
@@ -151,5 +153,35 @@ describe("drawer session strip", () => {
       old.id,
       legacy.id,
     ]);
+  });
+});
+
+describe("sidebar session window", () => {
+  const entries = Array.from({ length: 12 }, (_, i) => ({
+    ...listSessions(board().b)[0],
+    id: `s-${i}`,
+    title: `Title ${i}`,
+    anchorTitle: i === 9 ? "特别锚点" : "卡片",
+    time: new Date(2026, 0, 12 - i).toISOString(),
+  }));
+  it("keeps six recent rows and an older active session, without duplicates", () => {
+    expect(visibleSessions(entries, "s-9", false)).toEqual({
+      rows: [...entries.slice(0, 6), entries[9]],
+      hidden: 5,
+    });
+    expect(visibleSessions(entries, "s-0", false).hidden).toBe(6);
+    expect(
+      visibleSessions(entries.slice(0, 8), undefined, false).rows,
+    ).toHaveLength(8);
+    expect(visibleSessions(entries, undefined, true).hidden).toBe(0);
+    expect(visibleSessions([], undefined, false)).toEqual({
+      rows: [],
+      hidden: 0,
+    });
+  });
+  it("filters titles and anchors without changing activity order", () => {
+    expect(filterSessions(entries, " 特别 ")).toEqual([entries[9]]);
+    expect(filterSessions(entries, "TITLE 11")).toEqual([entries[11]]);
+    expect(filterSessions(entries, "missing")).toEqual([]);
   });
 });

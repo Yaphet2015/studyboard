@@ -285,13 +285,14 @@ export async function installFakeAtlas(
         onBeforeClose: () => () => {},
         listBoards: async () =>
           [...boards.values()].map(
-            ({ id, title, kind, updatedAt, archivedAt, progress, nodes, wrap }) => {
+            ({ id, title, kind, updatedAt, archivedAt, progress, nodes, wrap, notes }) => {
               // Mirrors model/progress.ts (stored on save, backfilled on list), as the real store does.
               const cards = nodes.filter((n: any) => n.parentId !== null);
               const sealed = cards.filter((n: any) => n.status === "explained").length;
               return {
                 id,
                 title,
+                sessionCount: (window as any).__atlasLegacyCounts ? undefined : notes.length,
                 kind,
                 updatedAt,
                 ...(archivedAt ? { archivedAt } : {}),

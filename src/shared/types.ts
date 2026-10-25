@@ -245,6 +245,7 @@ export interface Board {
   wrap?: { text: string; lit: string[]; missing?: string; done: boolean };
   /** Stamped on save for the sidebar list (model/progress.ts); older boards are backfilled on list. */
   progress?: BoardProgress;
+  sessionCount?: number;
 }
 export type ProbeVerdict = "correct" | "partial" | "wrong" | "unsure";
 /** One concept point of the probe's internal chain (shallow → deep). Never shown as a level. */
@@ -321,6 +322,8 @@ export interface BoardPlan {
   outOfScope: string[];
 }
 export interface BoardSummary {
+  /** Unknown on legacy saves until loaded or saved. */
+  sessionCount?: number;
   id: string;
   title: string;
   kind: Board["kind"];

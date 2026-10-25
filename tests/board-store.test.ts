@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { boardProgress, withProgress } from "../src/model/progress";
 import { tmpdir } from "node:os";
 import { BoardStore } from "../electron/board-store";
-import { createEmptyBoard, createWalkthroughBoard } from "../src/model/boards";
+import { createEmptyBoard, createWalkthroughBoard, newNote } from "../src/model/boards";
 import { LIMITS } from "../src/shared/validation";
 
 let directory: string;
@@ -42,6 +42,7 @@ describe("atomic private board storage", () => {
       {
         id: board.id,
         title: board.title,
+        sessionCount: board.notes.length,
         kind: board.kind,
         updatedAt: board.updatedAt,
         ...boardProgress(board),
@@ -169,6 +170,21 @@ describe("atomic private board storage", () => {
       code: "TOO_LARGE",
     });
   });
+  it("recomputes session counts on save and preserves unknown legacy counts", async () => {
+    const board = createEmptyBoard("会话数量");
+    board.notes.push(newNote(board, { x: 0, y: 0 }));
+    board.sessionCount = 99;
+    await store.save(board);
+    expect((await store.load(board.id))?.sessionCount).toBe(1);
+    expect((await store.list())[0].sessionCount).toBe(1);
+    board.notes = [];
+    await store.save(board);
+    expect((await store.list())[0].sessionCount).toBe(0);
+    const path = join(directory, "boards", `${board.id}.json`);
+    const { sessionCount, ...legacy } = JSON.parse(await readFile(path, "utf8"));
+    await writeFile(path, JSON.stringify(legacy));
+    expect((await store.list())[0].sessionCount).toBeUndefined();
+  });
   it("backfills sealed/total for boards saved before progress existed", async () => {
     const board = createEmptyBoard("旧画布");
     board.nodes.push({ ...board.nodes[0], id: "c1", parentId: board.nodes[0].id, status: "explained" });
@@ -178,6 +194,6 @@ describe("atomic private board storage", () => {
     expect(progress).toEqual({ sealed: 1, total: 1, done: true });
     await writeFile(path, JSON.stringify(legacy));
     const [summary] = await new BoardStore(join(directory, "boards")).list();
-    expect(summary).toMatchObject({ sealed: 1, total: 1, done: true });
+    expect(summary).toMatchObject({ sealed: 1, total: 1, done: true, sessionCount: board.notes.length });
   });
 });

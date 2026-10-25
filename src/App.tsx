@@ -1630,18 +1630,36 @@ export default function App() {
     boardId: string,
     sessionId: string,
   ): Promise<void> {
-    if (locked()) return;
+    if (locked()) throw new Error("正在切换画布");
     if (boardRef.current?.id !== boardId) await switchBoard(boardId);
     const current = boardRef.current;
-    if (current?.id !== boardId) return;
+    if (current?.id !== boardId) throw new Error("无法打开画布");
     const target = current.notes.find((note) => note.id === sessionId);
-    if (!target) return;
+    if (!target) throw new Error("对话不存在");
     openDrawer(sessionId);
     const at = target.attachedTo;
-    if (at) setSelection(at);
-    if (at?.kind === "node") {
+    const anchorExists =
+      at?.kind === "node"
+        ? current.nodes.some((n) => n.id === at.id)
+        : at?.kind === "relation"
+          ? current.relations.some((r) => r.id === at.id)
+          : false;
+    if (at && anchorExists) setSelection(at);
+    if (at && !anchorExists) {
+      setSelection(null);
+      setTimeout(() => flow.fitView({ padding: 0.16, duration: 400 }), 80);
+      showToast("锚点卡已不在画布上");
+    }
+    if (at?.kind === "node" && anchorExists) {
       // Let React Flow render the selected board before locating its card.
       setTimeout(() => frameFamily(at.id, true), 80);
+    } else if (at?.kind === "relation" && anchorExists) {
+      const relation = current.relations.find((r) => r.id === at.id)!;
+      setTimeout(() => flow.fitView({
+        nodes: [{ id: relation.source }, { id: relation.target }],
+        padding: 0.2,
+        duration: 320,
+      }), 80);
     }
   }
   async function createBoard(walkthrough = false) {
@@ -3017,7 +3035,7 @@ export default function App() {
               sessions={listSessions(board)}
               currentSessionId={drawer?.id}
               onOpenSession={(boardId, sessionId) =>
-                void openSession(boardId, sessionId)
+                openSession(boardId, sessionId)
               }
               onNewSession={() => addNote(undefined, { fresh: true })}
             />

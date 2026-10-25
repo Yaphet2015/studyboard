@@ -161,6 +161,7 @@ export class BoardStore {
         result.push({
           id: board.id,
           title: board.title,
+          sessionCount: board.sessionCount,
           kind: board.kind,
           updatedAt: board.updatedAt,
           ...(board.archivedAt ? { archivedAt: board.archivedAt } : {}),

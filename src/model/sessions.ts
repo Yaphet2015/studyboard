@@ -109,3 +109,27 @@ export function sessionClock(iso: string, now = new Date()): string {
     return `${d.getMonth() + 1}月${d.getDate()}日`;
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
+
+/** Keep the latest six and the active conversation in activity order. */
+export function visibleSessions(
+  entries: SessionEntry[],
+  activeId: string | undefined,
+  expandedAll: boolean,
+): { rows: SessionEntry[]; hidden: number } {
+  const sorted = [...entries].sort((a, b) => b.time.localeCompare(a.time));
+  const rows =
+    expandedAll || sorted.length <= 8
+      ? sorted
+      : sorted.filter((entry, i) => i < 6 || entry.id === activeId);
+  return { rows, hidden: entries.length - rows.length };
+}
+
+export function filterSessions(
+  entries: SessionEntry[],
+  query: string,
+): SessionEntry[] {
+  const q = query.trim().toLocaleLowerCase();
+  return entries.filter((entry) =>
+    `${entry.title} ${entry.anchorTitle}`.toLocaleLowerCase().includes(q),
+  );
+}

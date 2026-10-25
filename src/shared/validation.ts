@@ -475,6 +475,7 @@ export const boardSchema = z
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
     archivedAt: timestampSchema.optional(),
+    sessionCount: z.number().int().min(0).optional(),
     progress: z
       .object({ sealed: z.number().int().min(0), total: z.number().int().min(0), done: z.boolean() })
       .strict()
