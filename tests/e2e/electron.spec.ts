@@ -111,7 +111,7 @@ test("macOS desktop bridge, edit flush on immediate close, and durable reopening
     // The reopened board lists and selects that conversation in the sidebar.
     const current = nextPage
       .getByRole("complementary", { name: "学习空间", exact: true })
-      .locator('.workspace-session[aria-current="true"]');
+      .locator('.workspace-session[aria-current="page"]');
     await expect(current).toContainText("Close immediately");
     await expect(current).toHaveAttribute("title", /自由批注/);
     await nextPage.screenshot({

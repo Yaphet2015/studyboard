@@ -34,7 +34,7 @@ test("sidebar conversations stay ordered, persist and reopen on their cards", as
   await page
     .locator('.workspace-board[aria-current="page"]')
     .locator("..")
-    .getByRole("button", { name: /^展开/ })
+    .locator(".workspace-disclosure")
     .click();
   const drawer = page.locator(".drawer");
   await card(page, "c-how").click();
@@ -44,16 +44,16 @@ test("sidebar conversations stay ordered, persist and reopen on their cards", as
   await ask(page, "间隔期是多久？");
   await expect(entries(page)).toHaveCount(3);
   await expect(entries(page).nth(0)).toContainText("间隔期是多久？");
-  await expect(entries(page).nth(0)).toHaveAttribute("aria-current", "true");
+  await expect(entries(page).nth(0)).toHaveAttribute("aria-current", "page");
   await expect(entries(page).nth(1)).toContainText("赔付次数怎么算？");
   await expect(entries(page).nth(2)).toContainText("带我起步");
   await expect(drawer.getByRole("group", { name: "对话标签" })).toHaveCount(0);
   await page
-    .getByRole("button", { name: `收起${seed.title}的对话`, exact: true })
+    .locator(".workspace-board-row.is-current .workspace-disclosure")
     .click();
   await expect(entries(page)).toHaveCount(0);
   await page
-    .getByRole("button", { name: `展开${seed.title}的对话`, exact: true })
+    .locator(".workspace-board-row.is-current .workspace-disclosure")
     .click();
   await expect(entries(page)).toHaveCount(3);
   await expect
@@ -65,12 +65,7 @@ test("sidebar conversations stay ordered, persist and reopen on their cards", as
     )
     .toBe(3);
   await reloadApp(page);
-  await expect(entries(page)).toHaveCount(0);
-  await page
-    .locator('.workspace-board[aria-current="page"]')
-    .locator("..")
-    .getByRole("button", { name: /^展开/ })
-    .click();
+  await expect(entries(page)).not.toHaveCount(0);
   await entries(page).filter({ hasText: "赔付次数怎么算？" }).click();
   await expect(drawer.locator(".msg.user")).toHaveText("赔付次数怎么算？");
   await expect(card(page, "c-how")).toHaveClass(/selected/);
@@ -94,22 +89,27 @@ test("expanding another canvas lists its sessions and opens the selected convers
   await page
     .locator('.workspace-board[aria-current="page"]')
     .locator("..")
-    .getByRole("button", { name: /^展开/ })
+    .locator(".workspace-disclosure")
     .click();
   await page
-    .getByRole("button", { name: "展开另一个画布的对话", exact: true })
+    .getByRole("treeitem", { name: "另一个画布", exact: true })
+    .locator(".workspace-disclosure")
     .click();
   const target = entries(page).filter({ hasText: "另一个画布的会话" });
   await expect(target).toBeVisible();
   await expect(
-    page.locator('.workspace-board[aria-current="page"] .workspace-board-title'),
+    page.locator(
+      '.workspace-board[aria-current="page"] .workspace-board-title',
+    ),
   ).toHaveText(first.title);
   await target.click();
   await expect(
-    page.locator('.workspace-board[aria-current="page"] .workspace-board-title'),
+    page.locator(
+      '.workspace-board[aria-current="page"] .workspace-board-title',
+    ),
   ).toHaveText(second.title);
   await expect(page.getByLabel("批注标题")).toHaveValue("另一个画布的会话");
-  await expect(target).toHaveAttribute("aria-current", "true");
+  await expect(target).toHaveAttribute("aria-current", "page");
 });
 
 test("web preview conversations persist and the sidebar can create a new conversation", async ({
@@ -127,7 +127,7 @@ test("web preview conversations persist and the sidebar can create a new convers
   await page
     .locator('.workspace-board[aria-current="page"]')
     .locator("..")
-    .getByRole("button", { name: /^展开/ })
+    .locator(".workspace-disclosure")
     .click();
   await page.getByRole("button", { name: "新对话", exact: true }).click();
   await page.getByLabel("批注标题").fill("犹豫期的问题");
@@ -142,15 +142,10 @@ test("web preview conversations persist and the sidebar can create a new convers
     )
     .toBe(2);
   await reloadApp(page);
-  await expect(entries(page)).toHaveCount(0);
-  await page
-    .locator('.workspace-board[aria-current="page"]')
-    .locator("..")
-    .getByRole("button", { name: /^展开/ })
-    .click();
+  await expect(entries(page)).not.toHaveCount(0);
   await entries(page).filter({ hasText: "犹豫期的问题" }).click();
   await expect(page.getByLabel("批注标题")).toHaveValue("犹豫期的问题");
   await expect(
     entries(page).filter({ hasText: "犹豫期的问题" }),
-  ).toHaveAttribute("aria-current", "true");
+  ).toHaveAttribute("aria-current", "page");
 });
