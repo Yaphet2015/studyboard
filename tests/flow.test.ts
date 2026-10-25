@@ -146,6 +146,39 @@ describe("new-knowledge gate: the full pipeline", () => {
     expect(out.dropped.map((d) => d.card.id)).toEqual(["bad"]);
     expect(out.calls).toEqual({ regen: 1, judge: 0 });
   });
+  it("regenAny regenerates a rejected card even when most of the batch passed", async () => {
+    clearJudgeCache();
+    const second: RawCard = {
+      ...GOOD,
+      id: "wait",
+      title: "等待期内确诊通常只退保费",
+      body: "合同生效后有一段等待期，这期间确诊通常只退保费不赔保额，它防的是带病投保。",
+      newIdea: "等待期防带病投保",
+      substance: [{ kind: "mechanism", text: "这期间确诊通常只退保费不赔保额" }],
+      claims: ["等待期内确诊通常只退保费"],
+      check: { q: "小赵投保第二个月查出合同列明的病，最可能卡在哪一条？", keyPoints: ["等待期"] },
+    };
+    const bad = { ...GOOD, id: "bad", title: "保额的重要性", body: "保额很重要，要根据自身情况选择。", claims: ["保额很重要"] };
+    const redone: RawCard = {
+      ...second,
+      id: "bad",
+      title: "免责条款之外的出险照常赔",
+      body: "免责条款只列出合同不赔的情形，比如故意自伤，这些情形之外的出险照常赔付。",
+      newIdea: "免责条款有边界",
+      substance: [{ kind: "mechanism", text: "免责条款只列出合同不赔的情形" }],
+      claims: ["免责条款只覆盖列明的情形"],
+      check: { q: "小周因为一种合同没写免责的意外受伤，保险公司能直接拒赔吗？", keyPoints: ["免责只限列明情形"] },
+    };
+    const text = JSON.stringify({ nodes: [GOOD, second, bad] });
+    const plain: string[] = [];
+    const base = await runGate(text, insurance(), "pay", async (m) => (plain.push(m), JSON.stringify({ nodes: [redone] })), "base");
+    expect(plain).toEqual([]);
+    expect(base.kept.map((k) => k.card.id)).toEqual(["gap", "wait"]);
+    const asked: string[] = [];
+    const all = await runGate(text, insurance(), "pay", async (m) => (asked.push(m), JSON.stringify({ nodes: [redone] })), "base", { regenAny: true });
+    expect(asked).toEqual(["regen"]);
+    expect(all.kept.map((k) => k.card.id).sort()).toEqual(["bad", "gap", "wait"]);
+  });
   it("borderline cards go to ONE batched judge call, and verdicts are cached", async () => {
     clearJudgeCache();
     const b = insurance();

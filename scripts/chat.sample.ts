@@ -146,7 +146,7 @@ it.skipIf(!key || !base || !model)("reExpand expansion sample", async () => {
       return r.text;
     };
     const generated = JSON.parse(first.text.slice(first.text.indexOf("{"), first.text.lastIndexOf("}") + 1) || '{"nodes":[]}').nodes?.length ?? 0;
-    const res = await landReExpand(b, "s1", "m1", ts, (c) => runGate(first.text, c, "s1", ask, prompt), context);
+    const res = await landReExpand(b, "s1", "m1", ts, (c) => runGate(first.text, c, "s1", ask, prompt, { regenAny: true }), context);
     runs.push({
       name, skillsListed: listed.length, finish: first.finish, generated,
       kept: res.added.length, merged: res.mergedInto.length, dropped: res.outcome.dropped.map((d) => ({ title: d.card.title, reasons: d.reasons })),

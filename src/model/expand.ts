@@ -72,5 +72,5 @@ export function hintCardNote(title: string): string {
  */
 export function reExpandNote(instruction: string): string {
   return `
-学习者要求重做这张卡的下一层，要求是：「${instruction.slice(0, 200)}」。以这个要求为准，它覆盖上面「2–4 个」「2–3 个」的数量建议：按要求需要几张就生成几张，最多 ${LIMITS.expansionCards} 张；每张卡是 anchor 的直接子卡，parent 都写 "anchor"，不要再往下嵌套。画布上这张卡现在没有子卡，不用避开旧的内容。按学习者的拆法分，不要换成你自己的分法。`;
+学习者要求重做这张卡的下一层，要求是：「${instruction.slice(0, 200)}」。以这个要求为准，它覆盖上面「2–4 个」「2–3 个」的数量建议：按要求需要几张就生成几张，最多 ${LIMITS.expansionCards} 张；每张卡是 anchor 的直接子卡，parent 都写 "anchor"，不要再往下嵌套。画布上这张卡现在没有子卡，不用避开旧的内容。按学习者的拆法分，不要换成你自己的分法。每张卡仍要过检查：substance 里的每一项必须原样写进 body；check.q 要把这一点用到 body 里没出现过的新情境，不要复述 body。`;
 }

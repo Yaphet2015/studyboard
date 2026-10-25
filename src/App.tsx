@@ -801,6 +801,7 @@ export default function App() {
                     anchorId,
                     (m, prompt) => askQuietRef.current(m, prompt, `${m}-gate-${anchorId}`),
                     meta.request.prompt,
+                    { regenAny: !!meta.reExpand },
                   ).finally(() => setMapBusy(false));
                 // 重做下层: gate the new cards against the board without the old children; only when
                 // some land are the old ones archived (otherwise `target` is returned untouched).
