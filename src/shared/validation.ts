@@ -353,6 +353,18 @@ export const chatProposalSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("startStop"), stop: stopNo, stopId: idSchema, state: proposalStateSchema }).strict(),
+  z
+    .object({
+      type: z.literal("reExpand"),
+      targetId: idSchema,
+      title: z.string().max(200),
+      instruction: z.string().trim().min(1).max(200),
+      replaces: z.number().int().min(0).max(LIMITS.nodes),
+      below: z.number().int().min(0).max(LIMITS.nodes),
+      added: z.number().int().min(0).max(LIMITS.nodes).optional(),
+      state: proposalStateSchema,
+    })
+    .strict(),
 ]);
 export const chatMessageSchema = z
   .object({

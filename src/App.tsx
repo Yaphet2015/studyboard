@@ -1971,6 +1971,7 @@ export default function App() {
       setTimeout(() => setFlash(new Set()), 1200);
       return;
     }
+    if (p.type === "reExpand") return;
     const stop = routeOf(b).find((n) => n.id === p.stopId);
     if (!stop || stop.status === "explained") return setProposal(noteId, messageId, { state: "expired" });
     setProposal(noteId, messageId, { state: "applied" });

@@ -2,14 +2,14 @@
 // structured proposal per answer. No classifier and no modes; free text never writes cards.
 import type { AIRequest, Board, ChatMessage, ChatProposal, StickyNote } from "../shared/types";
 import { chatProposalSchema, routeOpSchema } from "../shared/validation";
-import { routeOf, sealed, stationOf, validRouteOps } from "./route";
+import { descendantIds, routeOf, sealed, stationOf, validRouteOps } from "./route";
 import { z } from "zod";
 
 /** Rough token estimate (CJK ≈ 1 token per 1.5 characters; ASCII is cheaper, so this overshoots). */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 1.5);
 /** Per-turn budget: the system prompt + this prompt + the answer stay under 2.5k tokens. */
 export const TURN_CAP = 2_500;
-const SYSTEM_TOKENS = 600;
+const SYSTEM_TOKENS = 800;
 const OUTPUT_TOKENS = 400;
 const HISTORY = 6;
 
@@ -103,6 +103,9 @@ export function chatRequest(
 const rawProposal = z.union([
   z.object({ type: z.literal("editRoute"), ops: z.array(z.unknown()).min(1) }).passthrough(),
   z.object({ type: z.literal("startStop"), stop: z.number() }).passthrough(),
+  z
+    .object({ type: z.literal("reExpand"), stop: z.union([z.number(), z.string()]), instruction: z.string() })
+    .passthrough(),
 ]);
 
 /** Where the answer text ends: a trailing ```json block or a bare {"proposal":…} tail. */
@@ -140,8 +143,32 @@ export function parseChatReply(text: string, board: Board): { reply: string; pro
   return proposal ? { reply, proposal } : { reply };
 }
 
-/** Local validation: unknown stations are dropped; startStop only for an unsealed stop. */
+/** A station number, or a card title that exactly one non-root card has; the root cannot be re-expanded. */
+function reExpandTarget(board: Board, ref: number | string) {
+  if (typeof ref === "number") return routeOf(board)[ref - 1];
+  const title = plain(ref);
+  const hits = board.nodes.filter((n) => n.parentId !== null && plain(n.title) === title);
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
+/** Local validation: unknown stations are dropped; startStop only for an unsealed stop; reExpand only for a real card. */
 export function checkProposal(raw: z.infer<typeof rawProposal>, board: Board): ChatProposal | undefined {
+  if (raw.type === "reExpand") {
+    const target = reExpandTarget(board, raw.stop as number | string);
+    const instruction = clip(plain(raw.instruction as string), 200);
+    if (!target || !instruction) return undefined;
+    const kids = board.nodes.filter((n) => n.parentId === target.id).length;
+    const result = chatProposalSchema.safeParse({
+      type: "reExpand",
+      targetId: target.id,
+      title: clip(plain(target.title), 200),
+      instruction,
+      replaces: kids,
+      below: descendantIds(board, target.id).length - kids,
+      state: "pending",
+    });
+    return result.success ? result.data : undefined;
+  }
   if (raw.type === "startStop") {
     const stop = routeOf(board)[(raw.stop as number) - 1];
     if (!stop || sealed(stop)) return undefined;

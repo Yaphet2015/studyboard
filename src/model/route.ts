@@ -23,6 +23,16 @@ export function stationOf(board: Board, id: string): number | undefined {
 }
 export const sealed = (n: ConceptNode) => n.status === "explained";
 
+/** Every card below one card, deepest first (the order that archives a subtree without re-parenting). */
+export function descendantIds(board: Board, id: string): string[] {
+  return board.nodes.filter((n) => n.parentId === id).flatMap((k) => [...descendantIds(board, k.id), k.id]);
+}
+/** Archive (into cardArchives, restorable) everything below a card; the card itself stays. */
+export function archiveBelow(board: Board, id: string, runId: string, timestamp: string, reason: string): Board {
+  const edits: CanvasOperation[] = descendantIds(board, id).map((d) => ({ op: "delete", id: d, reason }));
+  return edits.length ? applyCanvasEdits(board, edits, runId, timestamp) : board;
+}
+
 // ---- Route edits proposed in the post-probe chat (v2) -------------------------------------
 
 /** Keep only ops that point at real stations; at most 4; the route keeps at least one stop. */
@@ -117,12 +127,8 @@ export function applyRouteOps(
   const edits: CanvasOperation[] = [];
   const ids: string[] = [];
   const changed: string[] = [];
-  const descendants = (id: string): string[] => {
-    const kids = board.nodes.filter((n) => n.parentId === id);
-    return kids.flatMap((k) => [...descendants(k.id), k.id]);
-  };
   const archive = (id: string, reason: string) => {
-    for (const d of descendants(id)) edits.push({ op: "delete", id: d, reason });
+    for (const d of descendantIds(board, id)) edits.push({ op: "delete", id: d, reason });
     edits.push({ op: "delete", id, reason });
   };
   let fresh = 0;
