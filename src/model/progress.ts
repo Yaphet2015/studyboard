@@ -12,5 +12,5 @@ export function boardProgress(board: Pick<Board, "nodes" | "wrap">): BoardProgre
   return { sealed, total, done: Boolean(board.wrap?.done) || (total > 0 && sealed === total) };
 }
 
-/** Save-time stamp; also the backfill for boards saved before progress existed. */
-export const withProgress = <B extends Board>(board: B): B => ({ ...board, progress: boardProgress(board) });
+/** Save-time metadata. listSessions currently includes every note, including saved annotations. */
+export const withProgress = <B extends Board>(board: B): B => ({ ...board, progress: boardProgress(board), sessionCount: board.notes.length });

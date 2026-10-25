@@ -39,6 +39,7 @@ const preview: AtlasAPI = {
     return read().map((b) => ({
       id: b.id,
       title: b.title,
+      sessionCount: b.sessionCount,
       kind: b.kind,
       updatedAt: b.updatedAt,
       ...(b.archivedAt ? { archivedAt: b.archivedAt } : {}),
