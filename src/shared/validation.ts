@@ -12,6 +12,9 @@ export const LIMITS = {
   contextCharacters: 20_000,
   structureCharacters: 4_000,
   prompt: 8_000,
+  /** Cards one generation may return: 8 for the first map, wider for an expansion (重做下层 by a learner's rule). */
+  mapCards: 8,
+  expansionCards: 12,
 } as const;
 
 export const idSchema = z
@@ -353,6 +356,18 @@ export const chatProposalSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("startStop"), stop: stopNo, stopId: idSchema, state: proposalStateSchema }).strict(),
+  z
+    .object({
+      type: z.literal("reExpand"),
+      targetId: idSchema,
+      title: z.string().max(200),
+      instruction: z.string().trim().min(1).max(200),
+      replaces: z.number().int().min(0).max(LIMITS.nodes),
+      below: z.number().int().min(0).max(LIMITS.nodes),
+      added: z.number().int().min(0).max(LIMITS.nodes).optional(),
+      state: proposalStateSchema,
+    })
+    .strict(),
 ]);
 export const chatMessageSchema = z
   .object({
@@ -731,7 +746,7 @@ export const aiOverviewsSchema = z
   .optional()
   .catch(undefined);
 
-export const aiMapSchema = z
+const mapSchema = (maxCards: number) => z
   .object({
     nodes: z
       .array(
@@ -752,7 +767,7 @@ export const aiMapSchema = z
           .strict(),
       )
       .min(1)
-      .max(8),
+      .max(maxCards),
     relations: z
       .array(
         z
@@ -771,10 +786,11 @@ export const aiMapSchema = z
   // Stray top-level notes (e.g. "relations_note") are dropped rather than failing the whole map;
   // nodes and relations stay strict.
   .strip();
+export const aiMapSchema = mapSchema(LIMITS.mapCards);
 
 // Expansion may find no useful additions; initial maps must still contain nodes.
 export const aiExpansionSchema = z.union([
-  aiMapSchema,
+  mapSchema(LIMITS.expansionCards),
   z
     .object({
       nodes: z.tuple([]),

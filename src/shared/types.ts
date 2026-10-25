@@ -165,7 +165,21 @@ export type ProposalState = "pending" | "applied" | "undone" | "cancelled" | "ex
 export type ChatProposal =
   /** rows: the diff as it was when applied, so the thread still reads right afterwards. */
   | { type: "editRoute"; ops: RouteOp[]; state: ProposalState; rows?: RouteDiffRow[] }
-  | { type: "startStop"; stop: number; stopId: string; state: ProposalState };
+  | { type: "startStop"; stop: number; stopId: string; state: ProposalState }
+  /**
+   * 重做下层: regenerate the cards directly below one card by the learner's instruction. replaces and
+   * below (the grandchildren and deeper) are counted when proposed; added once it has been applied.
+   */
+  | {
+      type: "reExpand";
+      targetId: string;
+      title: string;
+      instruction: string;
+      replaces: number;
+      below: number;
+      added?: number;
+      state: ProposalState;
+    };
 export interface StickyNote {
   id: string;
   title: string;

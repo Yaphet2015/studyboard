@@ -5187,6 +5187,17 @@ h2.workspace-section span {
   color: var(--ink-3);
   margin-bottom: 6px;
 }
+.route-diff .rd-head {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.route-diff .rd-rule {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
 .route-diff .rd-rows {
   list-style: none;
   margin: 0;

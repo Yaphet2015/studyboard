@@ -298,6 +298,8 @@ export async function runGate(
   anchorId: string | null,
   ask: (mode: "regen" | "gate", prompt: string) => Promise<string>,
   regenBase: string,
+  /** regenAny: regenerate rejected cards even when most of the batch passed (the learner asked for one card per item). */
+  opts: { regenAny?: boolean } = {},
 ): Promise<GateOutcome & { rest: Record<string, unknown> }> {
   const { cards, rest } = parseCards(text);
   const out: GateOutcome = { kept: [], merges: [], dropped: [], calls: { regen: 0, judge: 0 }, tokens: roughTokens(text) };
@@ -316,9 +318,9 @@ export async function runGate(
     return rejected;
   };
   const rejected = pass(cards, false);
-  // Token budget: only spend a regenerate call when more than half the batch failed (or <2 survive).
+  // Token budget: only spend a regenerate call when more than half the batch failed (or <2 survive), unless regenAny.
   const survivors = out.kept.length + border.length;
-  if (rejected.length && survivors >= 2 && rejected.length * 2 <= cards.length) out.dropped.push(...rejected);
+  if (rejected.length && !opts.regenAny && survivors >= 2 && rejected.length * 2 <= cards.length) out.dropped.push(...rejected);
   else if (rejected.length) {
     const prompt = regeneratePrompt(regenBase, rejected, board, anchorId);
     out.calls.regen++;

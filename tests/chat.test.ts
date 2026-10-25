@@ -8,9 +8,12 @@ import {
   estimateTokens,
   expireProposals,
   isGoAhead,
+  noteLinks,
   parseChatReply,
   pendingProposal,
+  restoreLinks,
   TURN_CAP,
+  withProposal,
 } from "../src/model/chat";
 import { boardSchema } from "../src/shared/validation";
 import { CHAT_INSTRUCTIONS } from "../electron/prompts";
@@ -82,6 +85,24 @@ describe("parseChatReply", () => {
       fixture(),
     );
     expect(r.proposal?.type === "editRoute" && r.proposal.ops.map((o) => o.op)).toEqual(["move", "focus", "add", "add"]);
+  });
+  it("reads a reExpand by station number or exact card title and counts what it would replace", () => {
+    const b = fixture();
+    const byNo = parseChatReply('好，把第 1 站的下层重做。\n```json\n{"proposal":{"type":"reExpand","stop":1,"instruction":"每个 Skill 一张卡"}}\n```', b);
+    expect(byNo.reply).toBe("好，把第 1 站的下层重做。");
+    expect(byNo.proposal).toEqual({ type: "reExpand", targetId: "s1", title: "保费豁免条款", instruction: "每个 Skill 一张卡", replaces: 1, below: 0, state: "pending" });
+    b.nodes.push(node("g", "孙卡", "s1a", 0));
+    const byTitle = parseChatReply('重做。{"proposal":{"type":"reExpand","stop":"豁免的触发条件","instruction":"拆细一点"}}', b);
+    expect(byTitle.proposal).toMatchObject({ type: "reExpand", targetId: "s1a", replaces: 1, below: 0 });
+    expect(parseChatReply('x{"proposal":{"type":"reExpand","stop":1,"instruction":"x"}}', b).proposal).toMatchObject({ replaces: 1, below: 1 });
+  });
+  it("drops a reExpand whose target is missing, ambiguous, the root, or has no instruction", () => {
+    const b = fixture();
+    b.nodes.push(node("dup1", "重名", "s2", 0), node("dup2", "重名", "s3", 0));
+    const bad = (stop: unknown, instruction: unknown = "拆") =>
+      parseChatReply(`x{"proposal":{"type":"reExpand","stop":${JSON.stringify(stop)},"instruction":${JSON.stringify(instruction)}}}`, b);
+    for (const r of [bad(9), bad(0), bad("不存在的卡"), bad("重名"), bad("怎么挑一份合适的重疾险"), bad(1, "   ")]) expect(r).toEqual({ reply: "x" });
+    expect(parseChatReply('x{"proposal":{"type":"reExpand","stop":1}}', b)).toEqual({ reply: "x" });
   });
   it("never shows the JSON tail while streaming", () => {
     expect(displayChat('好，改一下。\n```js')).toBe("好，改一下。");
@@ -162,6 +183,39 @@ describe("chat turn", () => {
     expect(p).not.toContain("保额要覆盖治疗费和几年的收入缺口。".repeat(13));
     expect(p).not.toContain("等待期内确诊不赔");
   });
+  it("the card selected on the canvas wins over the thread's card, and its L2 cards come along", () => {
+    const b = fixture();
+    const p = chatPrompt(b, note(), "下一层直接按每个 Skills 拆", "s1");
+    expect(p).toContain("当前站：第 1 站「保费豁免条款」");
+    expect(p).toContain("选中卡：第 1 站「保费豁免条款」");
+    expect(p).toContain("下层(L2) 1 张：\n- 「豁免的触发条件」");
+    // Without a selection the next unsealed stop is the current one, and there is no selection block.
+    expect(chatPrompt(b, note(), "继续")).not.toContain("选中卡");
+  });
+  it("L2 lists at most 8 cards as title + 40 chars, and says when a card has none", () => {
+    const b = fixture();
+    for (let i = 0; i < 12; i++) b.nodes.push(node(`k${i}`, `子卡${i}`, "s3", i, { summary: "一句很长的摘要".repeat(20) }));
+    const p = chatPrompt(b, note(), "拆", "s3");
+    expect(p).toContain("下层(L2) 12 张：");
+    expect(p).toContain("- 「子卡7」：");
+    expect(p).not.toContain("子卡8」");
+    expect(p).toContain("- …共 12 张");
+    expect(p).not.toContain("一句很长的摘要".repeat(7));
+    expect(chatPrompt(b, note(), "拆", "s4")).toContain("下层(L2)：还没有");
+    // A selected card off the route is described without a station number; the root adds nothing.
+    expect(chatPrompt(b, note(), "拆", "s1a")).toContain("选中卡：「豁免的触发条件」");
+    expect(chatPrompt(b, note(), "拆", "q")).not.toContain("选中卡");
+  });
+  it("selecting a card with 8 L2 cards adds about 150 tokens to a turn", () => {
+    const b = fixture();
+    for (let i = 0; i < 8; i++) b.nodes.push(node(`k${i}`, `子卡标题${i}`, "s3", i, { body: "这是一段大约四十个字的摘要，用来估算每一轮多出来的上下文开销。".repeat(2) }));
+    const extra = estimateTokens(chatPrompt(b, note(), "拆", "s3")) - estimateTokens(chatPrompt(b, note(), "拆"));
+    expect(extra).toBeLessThan(260);
+  });
+  it("chatRequest passes the selected card into the prompt", () => {
+    const r = chatRequest(fixture(), note(), "拆", { requestId: "r", stickyId: "s", selectedId: "s1" });
+    expect(r.prompt).toContain("选中卡：第 1 站");
+  });
   it("stays under the 2.5k cap by trimming history", () => {
     const long = Array.from({ length: 6 }, (_, i) => ({ id: `m${i}`, role: "user" as const, text: "很长".repeat(400), createdAt: "2026-10-23T00:00:00.000Z" }));
     const p = chatPrompt(fixture(), note(long), "继续");
@@ -177,5 +231,26 @@ describe("chat turn", () => {
     const expired = expireProposals(asked.messages);
     expect(expired[0].meta?.proposal?.state).toBe("expired");
     expect(pendingProposal({ ...asked, messages: expired })).toBeUndefined();
+  });
+});
+
+describe("proposal state and note links", () => {
+  const reExpand = { type: "reExpand" as const, targetId: "s1", title: "保费豁免条款", instruction: "拆细", replaces: 1, below: 0, state: "pending" as const };
+  it("withProposal changes one message's proposal and nothing else", () => {
+    const b = fixture();
+    b.notes = [
+      { id: "n", title: "", text: "", position: { x: 0, y: 0 }, messages: [{ id: "a", role: "assistant", text: "好", createdAt: "2026-10-25T00:00:00.000Z", meta: { chat: true, proposal: reExpand } }] },
+    ];
+    const next = withProposal(b, "n", "a", { state: "applied", added: 5 });
+    expect(next.notes[0].messages[0].meta?.proposal).toEqual({ ...reExpand, state: "applied", added: 5 });
+    expect(b.notes[0].messages[0].meta?.proposal?.state).toBe("pending");
+    expect(withProposal(b, "n", "nope", { state: "applied" }).notes[0].messages[0].meta?.proposal?.state).toBe("pending");
+  });
+  it("restoreLinks puts back a note pinned to a card that was archived", () => {
+    const b = fixture();
+    b.notes = [{ id: "n", title: "", text: "", position: { x: 0, y: 0 }, attachedTo: { kind: "node", id: "s1a" }, contextCards: ["s1a"], messages: [] }];
+    const links = noteLinks(b);
+    const cut = [{ ...b.notes[0], attachedTo: undefined, contextCards: [] }];
+    expect(restoreLinks(cut, links)[0]).toMatchObject({ attachedTo: { kind: "node", id: "s1a" }, contextCards: ["s1a"] });
   });
 });

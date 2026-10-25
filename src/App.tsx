@@ -66,7 +66,8 @@ import { WINDOW_CHROME_CLASSES, windowChromeClasses } from "./model/platform";
 import { CoveragePanel } from "./components/CoveragePanel";
 import { coverTarget } from "./model/plan";
 import { ANGLE_DEPTH, type DigAngle } from "./model/angles";
-import { expandPrompt, hintCardNote } from "./model/expand";
+import { expandPrompt, hintCardNote, reExpandNote } from "./model/expand";
+import { clearBelow, landReExpand, type ReExpandJob } from "./model/reexpand";
 import { applyEnrichment, enrichPrompt } from "./model/enrich";
 import {
   confirmPlan,
@@ -132,8 +133,19 @@ import {
 import { Drawer } from "./components/Drawer";
 import { NextStepBar } from "./components/NextStep";
 import { nextStep } from "./model/next-step";
-import { applyRouteOps, defaultRoute, previewRoute, routeOf, stationOf } from "./model/route";
-import { chatRequest, displayChat, expireProposals, isGoAhead, parseChatReply, pendingProposal } from "./model/chat";
+import { applyRouteOps, defaultRoute, descendantIds, previewRoute, routeOf, stationOf } from "./model/route";
+import {
+  chatRequest,
+  displayChat,
+  expireProposals,
+  isGoAhead,
+  noteLinks,
+  parseChatReply,
+  pendingProposal,
+  restoreLinks,
+  withProposal,
+  type NoteLinks,
+} from "./model/chat";
 import { runGate, roughTokens } from "./model/novelty";
 import { applyGate } from "./model/gate";
 import { answerProbe, applyExpand, applyFrontier, applyRefine, bounds as probeBounds, cacheChain, cachedChain, chainKey, chainPrompt, failRecheck, gradePrompt, localGrade, newProbe, nextStep as probeStep, parseGrade, parsePoints, probeLearner, refinePrompt, restartProbe, skipProbe } from "./model/probe";
@@ -315,7 +327,9 @@ export default function App() {
   /** Act on a chat proposal: 应用 / 撤销 / 取消 / 开始第 N 站. Set once the handlers exist. */
   const proposalActRef = useRef<(noteId: string, messageId: string, act: "apply" | "undo" | "cancel" | "start") => void>(() => {});
   /** Route snapshots from before each applied proposal, for its 撤销 (this session only). */
-  const routeSnapshots = useRef(new Map<string, Pick<Board, "nodes" | "route" | "cardArchives">>());
+  const routeSnapshots = useRef(
+    new Map<string, Pick<Board, "nodes" | "relations" | "route" | "cardArchives"> & { links: NoteLinks }>(),
+  );
   const askQuietRef = useRef<
     (mode: "gate" | "mark" | "expand" | "probe" | "regen", prompt: string, stickyId: string, context?: AIRequest["context"]) => Promise<string>
   >(() => Promise.reject(new Error("not ready")));
@@ -334,6 +348,8 @@ export default function App() {
           split?: boolean;
           /** A picked ghost hint: select the card it becomes. */
           selectNew?: boolean;
+          /** 重做下层 from a chat proposal: the old cards below the anchor are archived when new ones land. */
+          reExpand?: ReExpandJob;
           /** chat: the note whose thread this turn belongs to (each turn has its own stickyId). */
           noteId?: string;
           /** Quiet requests (gate judge, regenerate, check marking) resolve a promise. */
@@ -775,21 +791,36 @@ export default function App() {
             try {
               if (meta && (meta.request.mode === "map" || meta.request.mode === "expand")) {
                 const mode = meta.request.mode;
+                let reExpandDone = "";
                 const anchorId = meta.anchor ?? questionNode(target)?.id ?? target.nodes[0].id;
                 setMapBusy(true);
-                const outcome = await runGate(
-                  update.text,
-                  target,
-                  anchorId,
-                  (m, prompt) => askQuietRef.current(m, prompt, `${m}-gate-${anchorId}`),
-                  meta.request.prompt,
-                ).finally(() => setMapBusy(false));
+                const gate = (against: Board) =>
+                  runGate(
+                    update.text,
+                    against,
+                    anchorId,
+                    (m, prompt) => askQuietRef.current(m, prompt, `${m}-gate-${anchorId}`),
+                    meta.request.prompt,
+                    { regenAny: !!meta.reExpand },
+                  ).finally(() => setMapBusy(false));
+                // 重做下层: gate the new cards against the board without the old children; only when
+                // some land are the old ones archived (otherwise `target` is returned untouched).
+                const job = meta.reExpand;
+                let outcome: Awaited<ReturnType<typeof gate>>;
+                let applied: { board: Board; added: string[]; mergedInto: string[] };
+                if (job) {
+                  const r = await landReExpand(target, anchorId, job.messageId, now(), gate, meta.request.context);
+                  outcome = r.outcome;
+                  applied = r;
+                } else {
+                  outcome = await gate(target);
+                  applied = applyGate(target, anchorId, outcome, mode, meta.request.context);
+                }
                 const tokens = outcome.tokens + roughTokens(meta.request.prompt, JSON.stringify(meta.request.context));
                 if (import.meta.env.DEV)
                   console.info(
                     `[gate] ${mode} ~${tokens} tokens · kept ${outcome.kept.length} · merged ${outcome.merges.length} · dropped ${outcome.dropped.length} · regen ${outcome.calls.regen} · judge ${outcome.calls.judge}`,
                   );
-                const applied = applyGate(target, anchorId, outcome, mode, meta.request.context);
                 next = applied.board;
                 if (meta.selectNew && applied.added[0]) {
                   const born = applied.added[0];
@@ -804,7 +835,21 @@ export default function App() {
                   // 摸底 done: stations below the frontier get the light A seal.
                   if (route.length) next = applyFrontier({ ...next, route });
                 }
+                if (job && applied.added.length) {
+                  // The proposal flips to 已应用 in the same board change; 撤销 restores this snapshot.
+                  const oldCount = descendantIds(target, anchorId).length;
+                  routeSnapshots.current.set(job.messageId, {
+                    nodes: target.nodes,
+                    relations: target.relations,
+                    route: target.route,
+                    cardArchives: target.cardArchives,
+                    links: noteLinks(target),
+                  });
+                  next = withProposal(next, job.noteId, job.messageId, { state: "applied", added: applied.added.length });
+                  reExpandDone = `已按你的要求重做下层：新增 ${applied.added.length} 张，原来的 ${oldCount} 张已归档，可以在这条回复里撤销。`;
+                } else if (job) reExpandDone = "这次没有生成可用的新卡，原来的下层没动。可以换个说法，再点应用重试。";
                 showToast(
+                  reExpandDone ? reExpandDone :
                   applied.added.length
                     ? applied.mergedInto.length
                       ? `已展开新的概念；有一点已在「${next.nodes.find((n) => n.id === applied.mergedInto[0])?.title}」里，已补充进去。`
@@ -857,7 +902,8 @@ export default function App() {
                 if (meta && meta.request.mode !== "answer" && added.length)
                   enrichRef.current(next, meta.anchor, added);
                 if (boardRef.current?.id === target.id) {
-                  putBoard(next, false);
+                  // A re-expansion that landed is one ⌘Z step; a plain expansion has never been.
+                  putBoard(next, !!meta?.reExpand);
                 } else {
                   next = { ...next, updatedAt: now() };
                   boardCache.current.set(next.id, next);
@@ -942,7 +988,7 @@ export default function App() {
     [edit, openDrawer],
   );
   const sendAI = useCallback(
-    async (request: AIRequest, anchor?: string, extra?: { selectNew?: boolean; split?: boolean }) => {
+    async (request: AIRequest, anchor?: string, extra?: { selectNew?: boolean; split?: boolean; reExpand?: ReExpandJob }) => {
       requestMeta.current.set(request.requestId, { request, anchor, ...extra });
       setPending((p) => ({
         ...p,
@@ -1019,7 +1065,12 @@ export default function App() {
         b,
         retry && note ? { ...note, messages: note.messages.slice(0, -1) } : note,
         prompt,
-        { requestId, stickyId: `chat-${noteId}-${requestId}` },
+        {
+          requestId,
+          stickyId: `chat-${noteId}-${requestId}`,
+          // The card selected on the canvas (not a multi-pick) is what 「这一层」「下一层」 means.
+          selectedId: chatSelection.current.length === 1 ? chatSelection.current[0] : undefined,
+        },
       );
       chatActive.current.set(noteId, request.stickyId);
       edit(
@@ -1055,8 +1106,8 @@ export default function App() {
     [settings.configured, edit],
   );
   const expand = useCallback(
-    (id: string, angle?: DigAngle, promptOverride?: string, extra?: { selectNew?: boolean; split?: boolean }) => {
-      if (locked()) return;
+    (id: string, angle?: DigAngle, promptOverride?: string, extra?: { selectNew?: boolean; split?: boolean; reExpand?: ReExpandJob }): boolean => {
+      if (locked()) return false;
       if (
         [...requestMeta.current.values()].some(
           (meta) =>
@@ -1067,25 +1118,30 @@ export default function App() {
             // Background ghost-hint fetches must not swallow a click on 再看一层.
             meta.request.mode !== "hint",
         )
-      )
-        return;
-      const b = boardRef.current;
-      if (!b) return;
-      if (b.kind === "walkthrough") {
-        const next = expandWalkthrough(b, id);
-        if (next === b) {
+      ) {
+        showToast("还有一个生成任务在进行，等它结束后再试。");
+        return false;
+      }
+      const current = boardRef.current;
+      if (!current) return false;
+      if (current.kind === "walkthrough") {
+        const next = expandWalkthrough(current, id);
+        if (next === current) {
           showToast("这一小步已展开。可以写下自己的解释，或在批注中继续问。");
-          return;
+          return false;
         }
         putBoard(next);
-        return;
+        return true;
       }
       if (!settings.configured) {
         setShowSettings(true);
-        return;
+        return false;
       }
+      // 重做下层: the prompt and the context see the card without its old children (they are archived
+      // when the new ones land), so the "already on the board" rules do not push the new cards away.
+      const b = extra?.reExpand ? clearBelow(current, id, extra.reExpand.messageId, now()) : current;
       const node = b.nodes.find((n) => n.id === id);
-      if (!node) return;
+      if (!node) return false;
       const virtual = newNote(b, { x: 0, y: 0 }, { kind: "node", id });
       const context = leanForGeneration(
         contextForNote({ ...b, notes: [...b.notes, virtual] }, virtual.id),
@@ -1099,12 +1155,13 @@ export default function App() {
           stickyId: "expand-" + id,
           requestId: uid(),
           mode: "expand",
-          prompt: promptOverride ?? expandPrompt(b, node.id, angle),
+          prompt: promptOverride ?? expandPrompt(b, node.id, angle) + (extra?.reExpand ? reExpandNote(extra.reExpand.instruction) : ""),
           context,
         },
         id,
         extra,
       );
+      return true;
     },
     [putBoard, settings.configured, sendAI, showToast],
   );
@@ -1921,24 +1978,7 @@ export default function App() {
   };
   /** Set one chat message's proposal state (no undo entry: the route edit carries that). */
   const setProposal = (noteId: string, messageId: string, patch: Partial<ChatProposal>) =>
-    edit(
-      (b) => ({
-        ...b,
-        notes: b.notes.map((n) =>
-          n.id === noteId
-            ? {
-                ...n,
-                messages: n.messages.map((m) =>
-                  m.id === messageId && m.meta?.proposal
-                    ? { ...m, meta: { ...m.meta, proposal: { ...m.meta.proposal, ...patch } as ChatProposal } }
-                    : m,
-                ),
-              }
-            : n,
-        ),
-      }),
-      false,
-    );
+    edit((b) => withProposal(b, noteId, messageId, patch), false);
   proposalActRef.current = (noteId, messageId, act) => {
     const b = boardRef.current;
     if (!b || locked()) return;
@@ -1950,7 +1990,8 @@ export default function App() {
       const snap = routeSnapshots.current.get(messageId);
       if (!snap) return showToast("这次改动已经不能单独撤销了，可以用 ⌘Z。");
       routeSnapshots.current.delete(messageId);
-      edit((cur) => ({ ...cur, ...snap }));
+      const { links, ...restored } = snap;
+      edit((cur) => ({ ...cur, ...restored, notes: restoreLinks(cur.notes, links) }));
       setProposal(noteId, messageId, { state: "undone" });
       return;
     }
@@ -1959,11 +2000,25 @@ export default function App() {
       const rows = previewRoute(b, p.ops);
       const { board: next, changed } = applyRouteOps(b, p.ops, `chat-${messageId}`, now(), () => newId("concept"));
       if (next === b) return setProposal(noteId, messageId, { state: "expired" });
-      routeSnapshots.current.set(messageId, { nodes: b.nodes, route: b.route, cardArchives: b.cardArchives });
+      routeSnapshots.current.set(messageId, {
+        nodes: b.nodes,
+        relations: b.relations,
+        route: b.route,
+        cardArchives: b.cardArchives,
+        links: noteLinks(b),
+      });
       edit(() => next);
       setProposal(noteId, messageId, { state: "applied", rows } as Partial<ChatProposal>);
       setFlash(new Set(changed));
       setTimeout(() => setFlash(new Set()), 1200);
+      return;
+    }
+    if (p.type === "reExpand") {
+      // Nothing changes yet: the cards are generated first, and only if some land are the old ones
+      // archived. The proposal turns 已应用 (with its 撤销) in that same board change.
+      if (!b.nodes.some((n) => n.id === p.targetId) || b.kind === "walkthrough")
+        return setProposal(noteId, messageId, { state: "expired" });
+      expand(p.targetId, undefined, undefined, { reExpand: { noteId, messageId, instruction: p.instruction } });
       return;
     }
     const stop = routeOf(b).find((n) => n.id === p.stopId);
@@ -2369,7 +2424,10 @@ export default function App() {
   const routePreview = useMemo(() => {
     const out = new Map<string, "replace" | "remove">();
     const waiting = pendingProposal(drawerNote)?.meta?.proposal;
-    if (!board || waiting?.type !== "editRoute") return out;
+    if (!board) return out;
+    // 重做下层 marks the cards that would be replaced.
+    if (waiting?.type === "reExpand") for (const id of descendantIds(board, waiting.targetId)) out.set(id, "replace");
+    if (waiting?.type !== "editRoute") return out;
     for (const row of previewRoute(board, waiting.ops))
       if (row.nodeId && (row.kind === "replace" || row.kind === "remove")) out.set(row.nodeId, row.kind);
     return out;
@@ -3185,6 +3243,7 @@ export default function App() {
           }
           chat={{
             board,
+            generating: mapBusy,
             onApply: (id) => proposalActRef.current(drawerNote.id, id, "apply"),
             onUndo: (id) => proposalActRef.current(drawerNote.id, id, "undo"),
             onCancel: (id) => proposalActRef.current(drawerNote.id, id, "cancel"),

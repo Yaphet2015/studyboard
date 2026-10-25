@@ -132,3 +132,49 @@ test("7 · no mode switch, no internal fields; talking on expires an unhandled p
   await expect(diff).toContainText("已过期");
   await expect(diff.getByRole("button", { name: "应用" })).toHaveCount(0);
 });
+
+test("8 · 选中一张卡说「下一层按每个 Skill 拆」: reExpand diff, 应用 replaces its children, 撤销 restores them", async ({ page }) => {
+  await installFakeAtlas(page, true, "web", [chatBoard()]);
+  await gotoApp(page);
+  await card(page, "c-what").click();
+  await page.keyboard.press("/");
+  const drawer = page.locator(".drawer");
+  const kids = () => disk(page).then((b) => b.nodes.filter((n: any) => n.parentId === "c-what").map((n: any) => n.title));
+  expect(await kids()).toEqual(["重疾、中症、轻症怎么分"]);
+  const skills = [
+    ["病种定义怎么读", "每种病在合同附表里有一条定义，先看定义里的诊断标准和手术名称，再谈赔不赔。"],
+    ["重疾与中症的界线", "同一种病，按分期或手术范围，分别落进重疾或中症，赔付比例随之不同。"],
+    ["轻症赔付与保费豁免", "确诊轻症时，多数产品免交之后的保费，合同继续有效，但轻症赔付不占重疾保额。"],
+    ["多次赔付的间隔期", "第二次赔付要隔一段时间，且必须是不同病种或新发病，否则不赔。"],
+    ["特定人群的额外给付", "少儿和老人有的产品会额外多赔，条件写在特别约定里，要逐条核对年龄与病种。"],
+  ];
+  await page.evaluate((s) => {
+    (window as any).__atlasExpansionAnswers = [
+      JSON.stringify({ nodes: s.map(([title, body], i) => ({ id: `sk${i}`, parent: "anchor", title, body })), relations: [] }),
+    ];
+  }, skills);
+  await reply(
+    page,
+    "可以，我把「保费豁免条款」的下一层重做成一个 Skill 一张卡。" +
+      proposal({ type: "reExpand", stop: "保费豁免条款", instruction: "下一层按每个 Skill 拆成一张卡" }),
+  );
+  await say(page, "下一层直接按每个 Skills 拆，一个 Skill 一张卡");
+  // The turn knew which card was selected and what sat under it.
+  const prompt = String((await asks(page)).at(-1).prompt);
+  expect(prompt).toContain("保费豁免条款");
+  expect(prompt).toContain("重疾、中症、轻症怎么分");
+  const diff = drawer.getByRole("group", { name: "重做下层" });
+  await expect(diff).toContainText("替换 1 张子卡");
+  await expect(card(page, "c-tiers").locator(".card.pv-replace")).toHaveCount(1);
+  // Nothing moved yet.
+  expect(await kids()).toEqual(["重疾、中症、轻症怎么分"]);
+  await diff.getByRole("button", { name: "应用" }).click();
+  await expect(diff).toContainText("已重做下层");
+  await expect.poll(kids).toEqual(skills.map(([t]) => t));
+  const after = await disk(page);
+  expect(after.cardArchives.some((a: any) => a.node.id === "c-tiers")).toBe(true);
+  expect(after.nodes.some((n: any) => n.id === "c-tiers")).toBe(false);
+  await diff.getByRole("button", { name: /撤销/ }).click();
+  await expect(diff).toContainText("已撤销");
+  await expect.poll(kids).toEqual(["重疾、中症、轻症怎么分"]);
+});

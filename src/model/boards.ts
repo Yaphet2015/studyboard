@@ -10,6 +10,7 @@ import {
   aiExpansionSchema,
   aiMapSchema,
   boardSchema,
+  LIMITS,
   pointSchema,
 } from "../shared/validation";
 import { applyOverviews } from "./overview";
@@ -297,7 +298,7 @@ export function buildMapFromAI(
   const result = schema.safeParse(parsed);
   if (!result.success)
     throw new Error(
-      "AI 返回的图谱不符合格式要求。请要求 1–8 个纯文本节点，并重试。",
+      `AI 返回的图谱不符合格式要求。请要求 1–${mode === "expand" ? LIMITS.expansionCards : LIMITS.mapCards} 个纯文本节点，并重试。`,
     );
   const map = result.data;
   const anchor = board.nodes.find(
