@@ -8,9 +8,12 @@ import {
   estimateTokens,
   expireProposals,
   isGoAhead,
+  noteLinks,
   parseChatReply,
   pendingProposal,
+  restoreLinks,
   TURN_CAP,
+  withProposal,
 } from "../src/model/chat";
 import { boardSchema } from "../src/shared/validation";
 import { CHAT_INSTRUCTIONS } from "../electron/prompts";
@@ -228,5 +231,26 @@ describe("chat turn", () => {
     const expired = expireProposals(asked.messages);
     expect(expired[0].meta?.proposal?.state).toBe("expired");
     expect(pendingProposal({ ...asked, messages: expired })).toBeUndefined();
+  });
+});
+
+describe("proposal state and note links", () => {
+  const reExpand = { type: "reExpand" as const, targetId: "s1", title: "保费豁免条款", instruction: "拆细", replaces: 1, below: 0, state: "pending" as const };
+  it("withProposal changes one message's proposal and nothing else", () => {
+    const b = fixture();
+    b.notes = [
+      { id: "n", title: "", text: "", position: { x: 0, y: 0 }, messages: [{ id: "a", role: "assistant", text: "好", createdAt: "2026-10-25T00:00:00.000Z", meta: { chat: true, proposal: reExpand } }] },
+    ];
+    const next = withProposal(b, "n", "a", { state: "applied", added: 5 });
+    expect(next.notes[0].messages[0].meta?.proposal).toEqual({ ...reExpand, state: "applied", added: 5 });
+    expect(b.notes[0].messages[0].meta?.proposal?.state).toBe("pending");
+    expect(withProposal(b, "n", "nope", { state: "applied" }).notes[0].messages[0].meta?.proposal?.state).toBe("pending");
+  });
+  it("restoreLinks puts back a note pinned to a card that was archived", () => {
+    const b = fixture();
+    b.notes = [{ id: "n", title: "", text: "", position: { x: 0, y: 0 }, attachedTo: { kind: "node", id: "s1a" }, contextCards: ["s1a"], messages: [] }];
+    const links = noteLinks(b);
+    const cut = [{ ...b.notes[0], attachedTo: undefined, contextCards: [] }];
+    expect(restoreLinks(cut, links)[0]).toMatchObject({ attachedTo: { kind: "node", id: "s1a" }, contextCards: ["s1a"] });
   });
 });

@@ -205,3 +205,32 @@ export function expireProposals(messages: ChatMessage[]): ChatMessage[] {
       : m,
   );
 }
+
+/** One message's proposal with some fields changed (state, rows, added…). Pure, so it can ride along with other board changes. */
+export function withProposal(board: Board, noteId: string, messageId: string, patch: Partial<ChatProposal>): Board {
+  return {
+    ...board,
+    notes: board.notes.map((n) =>
+      n.id === noteId
+        ? {
+            ...n,
+            messages: n.messages.map((m) =>
+              m.id === messageId && m.meta?.proposal
+                ? { ...m, meta: { ...m.meta, proposal: { ...m.meta.proposal, ...patch } as ChatProposal } }
+                : m,
+            ),
+          }
+        : n,
+    ),
+  };
+}
+
+/** The links a board change may cut (notes pinned to deleted cards), so an undo can put them back. */
+export type NoteLinks = { id: string; attachedTo?: StickyNote["attachedTo"]; contextCards?: string[] }[];
+export const noteLinks = (board: Board): NoteLinks =>
+  board.notes.map(({ id, attachedTo, contextCards }) => ({ id, attachedTo, contextCards }));
+export const restoreLinks = (notes: StickyNote[], links: NoteLinks): StickyNote[] =>
+  notes.map((n) => {
+    const l = links.find((x) => x.id === n.id);
+    return l ? { ...n, attachedTo: l.attachedTo, contextCards: l.contextCards } : n;
+  });

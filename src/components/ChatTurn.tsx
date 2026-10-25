@@ -7,6 +7,8 @@ import { AnswerBlocks } from "./AnswerBlocks";
 
 export interface ChatActions {
   board: Board;
+  /** A card generation is running (the 重做下层 proposal waits on it). */
+  generating?: boolean;
   onApply: (messageId: string) => void;
   onUndo: (messageId: string) => void;
   onCancel: (messageId: string) => void;
@@ -20,6 +22,7 @@ export function ChatTurn({ message, chat, busy, onCopy }: { message: ChatMessage
     <>
       <AnswerBlocks text={message.text} />
       {p?.type === "editRoute" && <RouteDiff message={message} chat={chat} />}
+      {p?.type === "reExpand" && <ReExpandDiff message={message} chat={chat} />}
       {p?.type === "startStop" && (() => {
         const stop = routeOf(chat.board).find((n) => n.id === p.stopId);
         const no = routeOf(chat.board).findIndex((n) => n.id === p.stopId) + 1;
@@ -49,6 +52,55 @@ export function ChatTurn({ message, chat, busy, onCopy }: { message: ChatMessage
         </div>
       )}
     </>
+  );
+}
+
+/** 重做下层: the card, what would be replaced, and the rule; 应用 generates first, so the old cards stay until new ones land. */
+function ReExpandDiff({ message, chat }: { message: ChatMessage; chat: ChatActions }) {
+  const p = message.meta?.proposal;
+  if (p?.type !== "reExpand") return null;
+  const kids = chat.board.nodes.filter((n) => n.parentId === p.targetId).sort((a, b) => a.order - b.order);
+  const stale = p.state === "expired" || p.state === "cancelled";
+  const working = p.state === "pending" && !!chat.generating;
+  return (
+    <div className={`route-diff ${stale ? "stale" : ""}`} role="group" aria-label="重做下层">
+      <p className="rd-head">
+        将重新生成「{p.title}」的下层（替换 {p.replaces} 张子卡{p.below ? `，含其下 ${p.below} 张孙卡` : ""}）
+      </p>
+      {p.state === "pending" && kids.length > 0 && (
+        <ol className="rd-rows">
+          {kids.slice(0, 5).map((k) => (
+            <li key={k.id} className="rd-row replace">
+              <span className="rd-old"><s>{k.title}</s></span>
+            </li>
+          ))}
+          {kids.length > 5 && <li className="rd-row"><span className="rd-note">…共 {kids.length} 张</span></li>}
+        </ol>
+      )}
+      <p className="rd-new rd-rule">按：{p.instruction}</p>
+      <div className="rd-acts">
+        {p.state === "pending" && (
+          <>
+            <button className="btn primary sm" disabled={!!chat.generating} onClick={() => chat.onApply(message.id)}>
+              {working ? "正在重新生成…" : "应用"}
+            </button>
+            <button className="btn sm" disabled={working} onClick={() => chat.onCancel(message.id)}>取消</button>
+          </>
+        )}
+        {p.state === "applied" && (
+          <>
+            <span className="rd-state">已重做下层{p.added ? `（新 ${p.added} 张，旧卡已归档）` : ""}</span>
+            <button className="btn sm" onClick={() => chat.onUndo(message.id)}>
+              <Undo2 size={14} className="ico" />
+              撤销
+            </button>
+          </>
+        )}
+        {p.state === "undone" && <span className="rd-state">已撤销</span>}
+        {p.state === "cancelled" && <span className="rd-state">已取消</span>}
+        {p.state === "expired" && <span className="rd-state">已过期</span>}
+      </div>
+    </div>
   );
 }
 

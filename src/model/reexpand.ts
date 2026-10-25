@@ -6,6 +6,13 @@ import { applyGate } from "./gate";
 import type { GateOutcome } from "./novelty";
 import { archiveBelow } from "./route";
 
+/** The chat proposal a re-expansion belongs to, carried on the request until its cards land. */
+export interface ReExpandJob {
+  noteId: string;
+  messageId: string;
+  instruction: string;
+}
+
 export interface ReExpandResult {
   board: Board;
   added: string[];
