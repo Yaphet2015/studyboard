@@ -1019,7 +1019,12 @@ export default function App() {
         b,
         retry && note ? { ...note, messages: note.messages.slice(0, -1) } : note,
         prompt,
-        { requestId, stickyId: `chat-${noteId}-${requestId}` },
+        {
+          requestId,
+          stickyId: `chat-${noteId}-${requestId}`,
+          // The card selected on the canvas (not a multi-pick) is what 「这一层」「下一层」 means.
+          selectedId: chatSelection.current.length === 1 ? chatSelection.current[0] : undefined,
+        },
       );
       chatActive.current.set(noteId, request.stickyId);
       edit(

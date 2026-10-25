@@ -9,24 +9,47 @@ import { z } from "zod";
 export const estimateTokens = (text: string) => Math.ceil(text.length / 1.5);
 /** Per-turn budget: the system prompt + this prompt + the answer stay under 2.5k tokens. */
 export const TURN_CAP = 2_500;
-const SYSTEM_TOKENS = 450;
+const SYSTEM_TOKENS = 600;
 const OUTPUT_TOKENS = 400;
 const HISTORY = 6;
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 const plain = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** Which stop the chat is about: the drawer's card when it is on the route, else the next unsealed one. */
-export function currentStop(board: Board, note?: StickyNote) {
+/**
+ * Which stop the chat is about: the card selected on the canvas when it is on the route, else the
+ * thread's card when it is, else the next unsealed one.
+ */
+export function currentStop(board: Board, note?: StickyNote, selectedId?: string) {
   const stops = routeOf(board);
   const anchor = note?.attachedTo?.kind === "node" ? note.attachedTo.id : undefined;
-  return stops.find((s) => s.id === anchor) ?? stops.find((s) => !sealed(s));
+  return (
+    stops.find((s) => s.id === selectedId) ?? stops.find((s) => s.id === anchor) ?? stops.find((s) => !sealed(s))
+  );
+}
+
+const SHOWN_CHILDREN = 8;
+/** What the learner has selected on the canvas, with the cards directly below it (L2): title + 40 chars. */
+function selectedBlock(board: Board, selectedId?: string): string {
+  const card = board.nodes.find((n) => n.id === selectedId);
+  // The root's L2 is the route itself, which the prompt already lists.
+  if (!card || card.parentId === null) return "";
+  const no = stationOf(board, card.id);
+  const kids = board.nodes.filter((n) => n.parentId === card.id).sort((a, b) => a.order - b.order);
+  const list = kids
+    .slice(0, SHOWN_CHILDREN)
+    .map((k) => `- 「${clip(plain(k.title), 24)}」${k.summary || k.body ? `：${clip(plain(k.summary || k.body), 40)}` : ""}`);
+  if (kids.length > SHOWN_CHILDREN) list.push(`- …共 ${kids.length} 张`);
+  return (
+    `选中卡：${no ? `第 ${no} 站` : ""}「${clip(plain(card.title), 40)}」\n` +
+    (list.length ? `下层(L2) ${kids.length} 张：\n${list.join("\n")}\n` : "下层(L2)：还没有\n")
+  );
 }
 
 /** The user prompt: topic, numbered route, current stop, the last 6 turns and the new message. */
-export function chatPrompt(board: Board, note: StickyNote | undefined, text: string): string {
+export function chatPrompt(board: Board, note: StickyNote | undefined, text: string, selectedId?: string): string {
   const stops = routeOf(board);
-  const current = currentStop(board, note);
+  const current = currentStop(board, note, selectedId);
   const route = stops.length
     ? stops.map((s, i) => `${i + 1}. ${clip(plain(s.title), 40)}${sealed(s) ? " ✓" : ""}`).join("\n")
     : "（还没有路线）";
@@ -35,7 +58,8 @@ export function chatPrompt(board: Board, note: StickyNote | undefined, text: str
     `路线（✓ 为已讲通）：\n${route}\n` +
     (current
       ? `当前站：第 ${stationOf(board, current.id)} 站「${clip(plain(current.title), 40)}」${current.body ? `：${clip(plain(current.body), 200)}` : ""}\n`
-      : "");
+      : "") +
+    selectedBlock(board, selectedId);
   // A card off the route that the thread hangs on, and cards the learner added on purpose.
   const anchorId = note?.attachedTo?.kind === "node" ? note.attachedTo.id : undefined;
   const anchor = board.nodes.find((n) => n.id === anchorId);
@@ -63,13 +87,13 @@ export function chatRequest(
   board: Board,
   note: StickyNote | undefined,
   text: string,
-  ids: { requestId: string; stickyId: string },
+  ids: { requestId: string; stickyId: string; selectedId?: string },
 ): AIRequest {
   return {
     boardId: board.id,
     stickyId: ids.stickyId,
     requestId: ids.requestId,
-    prompt: chatPrompt(board, note, text),
+    prompt: chatPrompt(board, note, text, ids.selectedId),
     context: { topic: board.topic, references: [], summary: "" },
     mode: "chat",
     canvas: false,

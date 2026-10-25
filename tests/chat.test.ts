@@ -162,6 +162,39 @@ describe("chat turn", () => {
     expect(p).not.toContain("保额要覆盖治疗费和几年的收入缺口。".repeat(13));
     expect(p).not.toContain("等待期内确诊不赔");
   });
+  it("the card selected on the canvas wins over the thread's card, and its L2 cards come along", () => {
+    const b = fixture();
+    const p = chatPrompt(b, note(), "下一层直接按每个 Skills 拆", "s1");
+    expect(p).toContain("当前站：第 1 站「保费豁免条款」");
+    expect(p).toContain("选中卡：第 1 站「保费豁免条款」");
+    expect(p).toContain("下层(L2) 1 张：\n- 「豁免的触发条件」");
+    // Without a selection the next unsealed stop is the current one, and there is no selection block.
+    expect(chatPrompt(b, note(), "继续")).not.toContain("选中卡");
+  });
+  it("L2 lists at most 8 cards as title + 40 chars, and says when a card has none", () => {
+    const b = fixture();
+    for (let i = 0; i < 12; i++) b.nodes.push(node(`k${i}`, `子卡${i}`, "s3", i, { summary: "一句很长的摘要".repeat(20) }));
+    const p = chatPrompt(b, note(), "拆", "s3");
+    expect(p).toContain("下层(L2) 12 张：");
+    expect(p).toContain("- 「子卡7」：");
+    expect(p).not.toContain("子卡8」");
+    expect(p).toContain("- …共 12 张");
+    expect(p).not.toContain("一句很长的摘要".repeat(7));
+    expect(chatPrompt(b, note(), "拆", "s4")).toContain("下层(L2)：还没有");
+    // A selected card off the route is described without a station number; the root adds nothing.
+    expect(chatPrompt(b, note(), "拆", "s1a")).toContain("选中卡：「豁免的触发条件」");
+    expect(chatPrompt(b, note(), "拆", "q")).not.toContain("选中卡");
+  });
+  it("selecting a card with 8 L2 cards adds about 150 tokens to a turn", () => {
+    const b = fixture();
+    for (let i = 0; i < 8; i++) b.nodes.push(node(`k${i}`, `子卡标题${i}`, "s3", i, { body: "这是一段大约四十个字的摘要，用来估算每一轮多出来的上下文开销。".repeat(2) }));
+    const extra = estimateTokens(chatPrompt(b, note(), "拆", "s3")) - estimateTokens(chatPrompt(b, note(), "拆"));
+    expect(extra).toBeLessThan(260);
+  });
+  it("chatRequest passes the selected card into the prompt", () => {
+    const r = chatRequest(fixture(), note(), "拆", { requestId: "r", stickyId: "s", selectedId: "s1" });
+    expect(r.prompt).toContain("选中卡：第 1 站");
+  });
   it("stays under the 2.5k cap by trimming history", () => {
     const long = Array.from({ length: 6 }, (_, i) => ({ id: `m${i}`, role: "user" as const, text: "很长".repeat(400), createdAt: "2026-10-23T00:00:00.000Z" }));
     const p = chatPrompt(fixture(), note(long), "继续");
