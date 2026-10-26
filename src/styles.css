@@ -5513,3 +5513,7 @@ h2.workspace-section span {
   background: var(--accent);
   border-color: var(--accent);
 }
+
+.profile-section { display: flex; flex-direction: column; min-height: 100%; }
+.profile-text { line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.settings-page .profile-updated { margin-top: auto; padding-top: 32px; font-size: 12px; color: var(--sb-ink3t, var(--ink3)); }

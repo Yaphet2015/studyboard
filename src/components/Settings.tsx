@@ -19,7 +19,9 @@ import type {
   AISettings,
   AISettingsInput,
 } from "../shared/types";
-import { isDesktop } from "../api";
+import { emptyProfile } from "../shared/profile";
+import { sessionClock } from "../model/sessions";
+import { api, isDesktop } from "../api";
 import {
   connectionStatusText,
   type ConnectionTestState,
@@ -110,8 +112,9 @@ export function ApiKeyField({
   );
 }
 
-type Section = "ai" | "appearance" | "data" | "archive" | "shortcuts" | "about";
+type Section = "profile" | "ai" | "appearance" | "data" | "archive" | "shortcuts" | "about";
 const SECTIONS: [Section, string, React.ReactNode][] = [
+  ["profile", "学习画像", <Info size={16} className="ico" />],
   ["ai", "AI 服务", <Sparkles size={16} className="ico" />],
   ["appearance", "外观", <PaletteIcon size={16} className="ico" />],
   ["data", "画板数据", <HardDrive size={16} className="ico" />],
@@ -152,6 +155,13 @@ export function Settings({
   onExport: () => void;
   initial?: Section;
 }) {
+  const [profile, setProfile] = useState(emptyProfile);
+  useEffect(() => {
+    let live = true;
+    void api.getProfile().then(value => { if (live) setProfile(value); }).catch(() => undefined);
+    const off = api.onProfileChanged?.(setProfile);
+    return () => { live = false; off?.(); };
+  }, []);
   const [section, setSection] = useState<Section>(initial);
   const [model, setModel] = useState(settings.model),
     [endpoint, setEndpoint] = useState(settings.baseUrl),
@@ -257,6 +267,13 @@ export function Settings({
           ))}
         </nav>
         <div className="settings-body" ref={body}>
+          {section === "profile" && (
+            <div className="settings-section profile-section" aria-labelledby="sec-profile">
+              <h2 id="sec-profile">学习画像</h2>
+              <p className="profile-text">{profile.text || "随着学习，我会逐渐了解你。"}</p>
+              <small className="profile-updated">最近更新于 {profile.updatedAt ? <time dateTime={profile.updatedAt}>{sessionClock(profile.updatedAt)}</time> : "暂无"}</small>
+            </div>
+          )}
           {section === "ai" && (
             <div className="settings-section" aria-labelledby="sec-ai">
               <h2 id="sec-ai">AI 服务</h2>
