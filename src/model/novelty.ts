@@ -254,11 +254,13 @@ export function regeneratePrompt(
   const existing = board.nodes.flatMap((n) => claimsOf(n)).slice(0, 30);
   const parent = anchorId ? board.nodes.find((n) => n.id === anchorId) : undefined;
   const siblings = board.nodes.filter((n) => anchorId && n.parentId === anchorId).map((n) => n.title).slice(0, 12);
+  // The generation prompt may carry a profile; never forward it to regeneration.
+  const requirement = base.split("学习者画像（")[0].slice(0, 300);
   return `起点问题：${board.topic.slice(0, 200)}
-${parent ? `父卡（anchor）：「${parent.title}」${parent.body ? `：${parent.body.slice(0, 300)}` : ""}\n` : ""}${siblings.length ? `已有兄弟卡：${JSON.stringify(siblings)}\n` : ""}原始要求（节选）：${base.slice(0, 300)}
+${parent ? `父卡（anchor）：「${parent.title}」${parent.body ? `：${parent.body.slice(0, 300)}` : ""}\n` : ""}${siblings.length ? `已有兄弟卡：${JSON.stringify(siblings)}\n` : ""}原始要求（节选）：${requirement}
 上一轮有 ${rejected.length} 张候选没有通过新知识检查，请只重写这几张（同样的 JSON 格式，id 保持不变），逐条改掉问题：
 ${rejected.map(({ card, reasons }) => `- ${card.id}「${card.title}」：${reasons.join("；")}`).join("\n")}
-已有卡片的关键论断如下，不要重复：${JSON.stringify(existing)}${probeBrief(board) ? `\n${probeBrief(board)}` : ""}`;
+已有卡片的关键论断如下，不要重复：${JSON.stringify(existing)}${probeBrief(board, null) ? `\n${probeBrief(board, null)}` : ""}`;
 }
 
 export interface GateOutcome {

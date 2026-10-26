@@ -13,11 +13,12 @@ export const INTENT_LABEL: Record<PlanIntent, string> = {
 };
 
 /** User prompt of the plan request: after the kickoff, or straight from the question. */
-export function planPrompt(topic: string, answers: string[]): string {
+export function planPrompt(topic: string, answers: string[], learner = ""): string {
   const known = answers.length
     ? `学习者在开场对话里说：${answers.map((a) => `「${a.slice(0, 300)}」`).join("；")}。`
-    : "学习者跳过了开场提问，按初学者处理。";
+    : learner ? "学习者没有补充开场回答，参考下面的摸底结果和画像安排深度。" : "学习者跳过了开场提问，按初学者处理。";
   return `为这个起点问题拟定学习计划：「${topic}」。${known}
+${learner}
 先拟计划，不要生成卡片。只输出计划 JSON。`;
 }
 
@@ -177,7 +178,7 @@ export function planFirstLevelPrompt(board: Board): string {
 /** With a 摸底 chain: the learner brief, plus the chain so each card can name the point it teaches. */
 function ladderNote(board: Board): string {
   const ladder = board.probe?.ladder;
-  if (!ladder?.length) return "";
+  if (!ladder?.length) return probeBrief(board);
   return `
 ${probeBrief(board)}
 概念链（从浅到深，序号从 0 起）：${ladder.map((l, i) => `${i}. ${l.desc}`).join("；")}。每张卡加一个整数字段 "level"，写它主要讲的是链上第几个概念；卡片顺序从浅到深，不要为已懂的概念单独成卡。`;

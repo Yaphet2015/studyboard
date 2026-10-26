@@ -104,6 +104,7 @@ export function ProbePanel({ state, busy, phase, topic, stations, onAnswer, onSk
   const head = (
     <div className="probe-head">
       <h3>找到你的起点</h3>
+      {asking && state.meta?.mode === "confirm" && n === 0 && <p className="probe-sub">我记得你已经懂前面这些，先确认一下</p>}
       {asking && (
         <span className="probe-prog">
           第 {n + 1} 题 <Dots n={n} total={total} />

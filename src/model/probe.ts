@@ -8,6 +8,8 @@
  * Nothing here is shown as levels or scores: the UI shows only 第 n 题 and the result.
  */
 import type { Board, ConceptNode, LadderLevel, ProbeAnswer, ProbeMeta, ProbeState, ProbeVerdict } from "../shared/types";
+import { profileText, type UserProfile } from "../shared/profile";
+import { learnerProfile } from "./profile-context";
 import { routeOf } from "./route";
 
 export const MAX_QUESTIONS = 10;
@@ -28,14 +30,16 @@ const QUESTION_RULES = `每个点配一道选择题：只考这一个概念；�
 const POINT_JSON = `{"concept":"≤20 字的具体概念","keyPoints":["答对必须理解的 1–2 个要点"],"probe":{"q":"…","options":["…","…","…"],"answer":1}}`;
 
 /** The first segment of the chain, or a deeper segment that builds on `from` (EXPAND). */
-export function chainPrompt(topic: string, from?: LadderLevel, n = from ? EXPAND_POINTS : INIT_POINTS, avoid: string[] = []): string {
+export function chainPrompt(topic: string, from?: LadderLevel, n = from ? EXPAND_POINTS : INIT_POINTS, avoid: string[] = [], profile: UserProfile | null = learnerProfile()): string {
   const where = from
     ? `学习者已经懂「${from.desc}」。往更深处再拟 ${n} 个概念点：第 1 个直接建立在「${from.desc}」之上，之后每个都建立在前一个之上，必须真的更深，不能换个说法重复。${avoid.length ? `已有的点（不要重复）：${avoid.slice(-12).join("；")}。` : ""}`
     : `为学习问题拟 ${n} 个由浅到深的概念点：第 1 个是日常直觉就能懂的入口，之后每个都直接建立在前一个之上；最后一个已经相当深，但不必封顶。`;
   return `学习问题：「${topic.slice(0, 300)}」
 ${where}
+${profileText(profile)}
+每个点额外输出 prior: known|shaky|none。只有画像明确支持对这个概念掌握扎实时才用 known；明确薄弱或仅可能掌握用 shaky；画像完全没有涉及的概念才用 none；画像明确说“不熟悉”的概念必须标 shaky，不能标 none。没有画像时全部 none，不要凭主题或常识猜测学习者会什么。前面连续至少 3 个 known 表示对这个主题基础很有把握，可用确认题核实。
 ${QUESTION_RULES}
-只输出 JSON：{"points":[${POINT_JSON}]}`;
+只输出 JSON（每个点必须有 prior 字段）：{"points":[${POINT_JSON.replace('{"concept"', '{"prior":"none","concept"')}]}`;
 }
 
 /** REFINE: are lo and hi adjacent, or is there an independent concept in between? */
@@ -81,7 +85,7 @@ export function parsePoints(reply: string): { points: LadderLevel[]; adjacent: b
     if (!desc || !q || options.length < 3 || !Number.isInteger(p.answer) || p.answer < 0 || p.answer >= options.length) continue;
     if (questionProblem(q, options)) continue;
     const keyPoints: string[] = Array.isArray(r?.keyPoints) ? r.keyPoints.map((k: unknown) => text(k, 80)).filter(Boolean).slice(0, 3) : [];
-    points.push({ level: 0, desc, keyPoints: keyPoints.length ? keyPoints : [desc], probe: { type: "choice", q, options, answer: p.answer } });
+    points.push({ level: 0, prior: ["known", "shaky", "none"].includes(r?.prior) ? r.prior : "none", desc, keyPoints: keyPoints.length ? keyPoints : [desc], probe: { type: "choice", q, options, answer: p.answer } });
   }
   return { points, adjacent: j?.adjacent === true };
 }
@@ -95,7 +99,7 @@ const number = (chain: LadderLevel[]) => chain.map((p, i) => ({ ...p, level: i }
 
 /** In-memory cache keyed by topic + from, so 重新摸底 and retries reuse generated points. */
 const chainCache = new Map<string, LadderLevel[]>();
-export const chainKey = (topic: string, from?: LadderLevel) => `${topic}|${from ? pointId(from) + ":" + from.desc : ""}`;
+export const chainKey = (topic: string, from?: LadderLevel) => `${topic}|${from ? pointId(from) + ":" + from.desc : ""}|${profileText(learnerProfile())}`;
 export const cachedChain = (key: string) => chainCache.get(key);
 export const cacheChain = (key: string, points: LadderLevel[]) => void chainCache.set(key, points);
 
@@ -128,10 +132,14 @@ export function localGrade(l: LadderLevel, choice: number | null, reason: string
 // ── State machine ───────────────────────────────────────────────────────────────────────────────
 
 const freshMeta = (): ProbeMeta => ({ expansions: 0, refines: 0, refined: [], adjacent: [] });
+export const knownPrefix = (chain: LadderLevel[]) => {
+  const first = chain.findIndex(p => p.prior !== "known");
+  return first < 0 ? chain.length : first;
+};
 export function newProbe(chain: LadderLevel[]): ProbeState {
   // Stable ids from the start, so refine inserts never shift what an answer points at.
   const ladder = number(chain).map((p, i) => ({ ...p, id: p.id ?? `p${i}`, ...(i && !p.buildsOn ? { buildsOn: chain[i - 1].id ?? `p${i - 1}` } : {}) }));
-  return { status: "asking", ladder, answers: [], meta: freshMeta() };
+  return { status: "asking", ladder, answers: [], meta: { ...freshMeta(), mode: knownPrefix(ladder) >= 3 ? "confirm" : knownPrefix(ladder) > 0 ? "partial" : "full" } };
 }
 const metaOf = (s: ProbeState): ProbeMeta => s.meta ?? freshMeta();
 const indexOf = (s: ProbeState, a: ProbeAnswer) => {
@@ -153,7 +161,7 @@ export function bounds(s: ProbeState): { lo: number; hi: number } {
   const v = verdicts(s);
   let hi = INF;
   for (const [i, verdict] of v) if (verdict !== "correct") hi = Math.min(hi, i);
-  let lo = -1;
+  let lo = s.meta?.mode === "partial" ? Math.min(knownPrefix(s.ladder) - 1, hi - 1) : -1;
   for (const [i, verdict] of v) if (verdict === "correct" && i < hi) lo = Math.max(lo, i);
   return { lo, hi };
 }
@@ -191,6 +199,14 @@ export function nextStep(s: ProbeState): ProbeStep {
   const meta = metaOf(s);
   const asked = s.answers.length;
   if (!s.ladder.length) return { kind: "expand", from: -1 };
+  if (meta.mode === "confirm") {
+    const prefix = knownPrefix(s.ladder);
+    const checks = [Math.max(0, prefix - 2), prefix - 1].filter((v, i, all) => all.indexOf(v) === i);
+    const index = checks.find(i => !s.answers.some(a => indexOf(s, a) === i));
+    if (index !== undefined) return { kind: "ask", index, recheck: false };
+    return { kind: "done", reason: "precise", frontier: Math.min(prefix, s.ladder.length - 1) };
+  }
+  if (!asked && meta.mode === "partial") return { kind: "ask", index: Math.min(knownPrefix(s.ladder), s.ladder.length - 1), recheck: false };
   if (asked >= MAX_QUESTIONS) return done(s, "cap");
   // 不了解这块: at most 2 follow-ups inside (lo, hi); another 不了解 ends it at once.
   const firstIdk = s.answers.findIndex((a) => a.verdict === "unsure");
@@ -238,7 +254,8 @@ export function answerProbe(s: ProbeState, answer: Omit<ProbeAnswer, "level" | "
   const index = answer.pointId ? s.ladder.findIndex((p) => pointId(p) === answer.pointId) : step.kind === "ask" ? step.index : (answer.level ?? 0);
   const point = s.ladder[index];
   const a: ProbeAnswer = { ...answer, level: index, ...(point ? { pointId: pointId(point) } : {}) };
-  return settle({ ...s, answers: [...s.answers, a] });
+  const meta = s.meta?.mode === "confirm" && a.verdict !== "correct" ? { ...s.meta, mode: "full" as const } : s.meta;
+  return settle({ ...s, meta, answers: [...s.answers, a] });
 }
 
 /** EXPAND result: deeper points appended after the current top (or the first chain). */
@@ -319,8 +336,8 @@ export function probeResult(s: ProbeState, _stations = 0): string {
   return `你已经懂到「${o.known.desc}」。从「${o.start?.desc ?? ""}」开始，正好在你会的上面一层。`;
 }
 
-/** The learner profile every generation prompt gets (plan, first level, expand, regen). */
-export function probeLearner(s: ProbeState): string {
+/** Board-local results used by generation; global prose is added separately. */
+function localLearner(s: ProbeState): string {
   if (s.status === "asking") return "";
   // Skipped before the first chain arrived still counts as a skip.
   if (s.status === "skipped" && !s.answers.length) return "学习者跳过了摸底，按初学者处理，从最基础的开始。";
@@ -330,8 +347,12 @@ export function probeLearner(s: ProbeState): string {
   const start = o.start ? `路线从「${o.start.desc}」开始` : "";
   return `摸底结果：${known}${start}。已懂的内容不单独成卡、不重复解释，只在根卡或第一站开头用 1–2 句“你已经知道……”带过；需要前置知识时只用一句话提一下。讲法、举例和用词按这个深度来。`;
 }
-/** The same brief for any board (empty when there is no settled probe). */
-export const probeBrief = (board: Pick<Board, "probe">) => (board.probe ? probeLearner(board.probe) : "");
+/** Local results first, with the global profile supplementing the teaching style. */
+export function probeLearner(s: ProbeState, profile: UserProfile | null = learnerProfile()): string {
+  return [localLearner(s), profileText(profile)].filter(Boolean).join("\n");
+}
+export const probeBrief = (board: Pick<Board, "probe">, profile: UserProfile | null = learnerProfile()) =>
+  board.probe ? probeLearner(board.probe, profile) : profileText(profile);
 /** Known points as text, for the gate's duplicate check. */
 export const knownClaims = (board: Pick<Board, "probe">): string[] =>
   board.probe && board.probe.status !== "asking" ? probeOutcome(board.probe).knownList.flatMap((p) => [p.desc, ...p.keyPoints]) : [];

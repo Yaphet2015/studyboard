@@ -148,6 +148,8 @@ import {
 } from "./model/chat";
 import { runGate, roughTokens } from "./model/novelty";
 import { applyGate } from "./model/gate";
+import { learnerProfile, setLearnerProfile } from "./model/profile-context";
+import { profileText } from "./shared/profile";
 import { answerProbe, applyExpand, applyFrontier, applyRefine, bounds as probeBounds, cacheChain, cachedChain, chainKey, chainPrompt, failRecheck, gradePrompt, localGrade, newProbe, nextStep as probeStep, parseGrade, parsePoints, probeLearner, refinePrompt, restartProbe, skipProbe } from "./model/probe";
 import { afterChildSealed, analogyPrompt, isStuck, parseAnalogy, putOff, splitNote } from "./model/stuck";
 import { parseWrap, wrapPrompt } from "./model/wrap";
@@ -554,6 +556,7 @@ export default function App() {
       try {
         const list = (await api.listBoards()).filter((b) => !b.archivedAt);
         const settings = await api.getAISettings();
+        setLearnerProfile(await api.getProfile());
         let initial = list.length
           ? await api.loadBoard(
               [...list].sort((a, b) =>
@@ -1299,7 +1302,8 @@ export default function App() {
         mode: "plan",
         prompt: planPrompt(
           b.topic,
-          b.probe && b.probe.status !== "asking" ? [probeLearner(b.probe), ...learnerAnswers(note)] : learnerAnswers(note),
+          learnerAnswers(note),
+          b.probe ? probeLearner(b.probe) : profileText(learnerProfile()),
         ),
         context: contextForNote(
           { ...b, notes: [virtual] },
@@ -1434,6 +1438,7 @@ export default function App() {
     [edit, expandPoints, finishProbe, genPoints, showToast],
   );
   /** 摸底 step 1: open the root's kickoff drawer and draft the first chain (one batched call). */
+  useEffect(() => api.onProfileChanged?.(setLearnerProfile), []);
   const startProbe = useCallback(() => {
     const b = boardRef.current;
     const root = b && rootOf(b);
