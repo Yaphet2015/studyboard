@@ -32,6 +32,12 @@ const api: AtlasAPI = {
   exportBoard: (board, format, image) =>
     ipcRenderer.invoke("studyboard:export", board, format, image),
   importBoard: (text) => ipcRenderer.invoke("studyboard:import", text),
+  getProfile: () => ipcRenderer.invoke("studyboard:profile"),
+  onProfileChanged: callback => {
+    const listener = (_event: Electron.IpcRendererEvent, value: Parameters<typeof callback>[0]) => callback(value);
+    ipcRenderer.on("studyboard:profile-changed", listener);
+    return () => ipcRenderer.removeListener("studyboard:profile-changed", listener);
+  },
   getAISettings: () => ipcRenderer.invoke("studyboard:ai-settings"),
   setAISettings: (settings) =>
     ipcRenderer.invoke("studyboard:configure-ai", settings),

@@ -10,6 +10,8 @@ import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { ProfileStore } from "./profile-store.js";
+import { boardEvidence } from "../src/shared/profile.js";
 import { BoardStore } from "./board-store.js";
 import { importTransferredBoard } from "./board-transfer.js";
 import {
@@ -156,6 +158,21 @@ async function bootstrap(): Promise<void> {
           window.webContents.send("studyboard:canvas-run", { run });
       },
     );
+    const profile = new ProfileStore(path.join(app.getPath("userData"), "profile.json"),
+      prompt => runtime.rewriteProfile(prompt), value => {
+        if (window && !window.isDestroyed()) window.webContents.send("studyboard:profile-changed", value);
+      });
+    const profileReady = profile.initialize(async () => {
+      const boards = [];
+      // Oldest first: the bounded queue keeps the most recent learning results.
+      for (const item of (await store.list()).reverse()) {
+        const board = await store.load(item.id);
+        if (board) boards.push(board);
+      }
+      return boards;
+    });
+    // Learning observations follow successful saves in order, including the final close flush.
+    let saves: Promise<unknown> = Promise.resolve();
     function assertSender(event: Electron.IpcMainInvokeEvent) {
       const url = event.senderFrame?.url;
       if (event.sender !== window?.webContents || !url)
@@ -175,7 +192,18 @@ async function bootstrap(): Promise<void> {
     }
     handle("studyboard:list", () => store.list());
     handle("studyboard:load", (value) => store.load(id.parse(value)));
-    handle("studyboard:save", (value) => store.save(boardSchema.parse(value)));
+    handle("studyboard:profile", async () => { await profileReady; return profile.get(); });
+    handle("studyboard:save", (value) => {
+      const board = boardSchema.parse(value);
+      const task = saves.then(async () => {
+        const previous = await store.load(board.id);
+        await store.save(board);
+        await profileReady;
+        await profile.enqueue(boardEvidence(board, previous));
+      });
+      saves = task.catch(() => undefined);
+      return task;
+    });
     handle("studyboard:delete", (value) => store.delete(id.parse(value)));
     handle("studyboard:import", (value) => {
       if (closePending) throw new Error("正在关闭应用，请稍后重试。");

@@ -309,6 +309,7 @@ export async function installFakeAtlas(
           boards.delete(id);
           persist();
         },
+        getProfile: async () => JSON.parse(localStorage.getItem("studyboard-preview-profile-v1") ?? '{"version":1,"enabled":true,"text":"","updatedAt":null,"lastRewriteAt":null,"pending":[]}'),
         getAISettings: async () => ({ ...settings }),
         // Like the desktop runtime with safeStorage: a key is saved encrypted, shown masked.
         setAISettings: async (s: any) => {

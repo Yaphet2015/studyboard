@@ -55,7 +55,7 @@ export function NextStepBar({
         : `下一步${station ? ` · 第 ${station} 站` : ""}`;
   const main =
     step.kind === "probe"
-      ? "继续摸底，找到你的起点"
+      ? step.confirm ? "先确认一下你的基础" : "继续摸底，找到你的起点"
       : step.kind === "wrap"
       ? "把所有站合起来，讲回你的起点问题"
       : step.kind === "continue"

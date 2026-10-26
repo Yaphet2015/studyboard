@@ -3,13 +3,15 @@
 import type { AIRequest, Board, ChatMessage, ChatProposal, StickyNote } from "../shared/types";
 import { chatProposalSchema, routeOpSchema } from "../shared/validation";
 import { descendantIds, routeOf, sealed, stationOf, validRouteOps } from "./route";
+import { profileText } from "../shared/profile";
+import { learnerProfile } from "./profile-context";
 import { z } from "zod";
 
 /** Rough token estimate (CJK ≈ 1 token per 1.5 characters; ASCII is cheaper, so this overshoots). */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 1.5);
-/** Per-turn budget: the system prompt + this prompt + the answer stay under 2.5k tokens. */
-export const TURN_CAP = 2_500;
-const SYSTEM_TOKENS = 800;
+/** Per-turn budget: the system prompt + this prompt + the answer stay under 3.5k tokens (including the complete learner profile). */
+export const TURN_CAP = 3_500;
+const SYSTEM_TOKENS = 1_000;
 const OUTPUT_TOKENS = 400;
 const HISTORY = 6;
 
@@ -54,6 +56,7 @@ export function chatPrompt(board: Board, note: StickyNote | undefined, text: str
     ? stops.map((s, i) => `${i + 1}. ${clip(plain(s.title), 40)}${sealed(s) ? " ✓" : ""}`).join("\n")
     : "（还没有路线）";
   const head =
+    (profileText(learnerProfile()) ? `${profileText(learnerProfile())}\n` : "") +
     `主题：${clip(plain(board.topic), 120)}\n` +
     `路线（✓ 为已讲通）：\n${route}\n` +
     (current

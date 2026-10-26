@@ -6,6 +6,7 @@ import {
   HardDrive,
   Upload,
   Info,
+  Sprout,
   Keyboard,
   KeyRound,
   LockKeyhole,
@@ -19,7 +20,9 @@ import type {
   AISettings,
   AISettingsInput,
 } from "../shared/types";
-import { isDesktop } from "../api";
+import { emptyProfile } from "../shared/profile";
+import { profileClock } from "../model/profile-clock";
+import { api, isDesktop } from "../api";
 import {
   connectionStatusText,
   type ConnectionTestState,
@@ -110,8 +113,9 @@ export function ApiKeyField({
   );
 }
 
-type Section = "ai" | "appearance" | "data" | "archive" | "shortcuts" | "about";
+type Section = "profile" | "ai" | "appearance" | "data" | "archive" | "shortcuts" | "about";
 const SECTIONS: [Section, string, React.ReactNode][] = [
+  ["profile", "学习画像", <Sprout size={16} className="ico" />],
   ["ai", "AI 服务", <Sparkles size={16} className="ico" />],
   ["appearance", "外观", <PaletteIcon size={16} className="ico" />],
   ["data", "画板数据", <HardDrive size={16} className="ico" />],
@@ -152,6 +156,13 @@ export function Settings({
   onExport: () => void;
   initial?: Section;
 }) {
+  const [profile, setProfile] = useState(emptyProfile);
+  useEffect(() => {
+    let live = true;
+    void api.getProfile().then(value => { if (live) setProfile(value); }).catch(() => undefined);
+    const off = api.onProfileChanged?.(setProfile);
+    return () => { live = false; off?.(); };
+  }, []);
   const [section, setSection] = useState<Section>(initial);
   const [model, setModel] = useState(settings.model),
     [endpoint, setEndpoint] = useState(settings.baseUrl),
@@ -222,6 +233,7 @@ export function Settings({
       ref={root}
       tabIndex={-1}
       className="settings-page"
+      lang="zh-CN"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
@@ -257,6 +269,22 @@ export function Settings({
           ))}
         </nav>
         <div className="settings-body" ref={body}>
+          {section === "profile" && (
+            <div className="settings-section profile-section" aria-labelledby="sec-profile">
+              <h2 id="sec-profile">学习画像</h2>
+              <p className="profile-lede">这是我目前对你的了解，学习时我会据此调整讲法。</p>
+              {profile.text.trim() ? (
+                <article className="profile-card" aria-labelledby="sec-profile">
+                  <p className="profile-text">{profile.text}</p>
+                  {profile.updatedAt && profileClock(profile.updatedAt) && (
+                    <footer className="profile-updated">最近更新于 <time dateTime={profile.updatedAt}>{profileClock(profile.updatedAt)}</time></footer>
+                  )}
+                </article>
+              ) : (
+                <p className="profile-empty">还没有画像。做一次摸底，或把卡片学懂，我就会开始了解你。</p>
+              )}
+            </div>
+          )}
           {section === "ai" && (
             <div className="settings-section" aria-labelledby="sec-ai">
               <h2 id="sec-ai">AI 服务</h2>

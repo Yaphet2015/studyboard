@@ -279,6 +279,7 @@ export const probeStateSchema = z
             level: z.number().int().min(0).max(39),
             id: z.string().max(16).optional(),
             buildsOn: z.string().max(16).optional(),
+            prior: z.enum(["known", "shaky", "none"]).optional(),
             desc: z.string().max(80),
             keyPoints: z.array(z.string().max(120)).max(3),
             probe: z
@@ -310,6 +311,9 @@ export const probeStateSchema = z
     frontier: z.number().int().min(0).max(39).optional(),
     meta: z
       .object({
+        mode: z.enum(["full", "partial", "confirm"]).optional(),
+        confirmIntro: z.string().max(500).optional(),
+        confirmFailedAt: z.number().int().min(1).max(10).optional(),
         expansions: z.number().int().min(0).max(10),
         refines: z.number().int().min(0).max(10),
         refined: z.array(z.string().max(40)).max(20),
