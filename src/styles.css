@@ -5376,7 +5376,7 @@ h2.workspace-section span {
 .probe-dots i.d { background: var(--ink-3); }
 .probe-dots i.n { background: var(--accent); }
 .probe-dots.confirm i { width: 16px; height: 4px; border-radius: 2px; }
-.probe-intro { font-size: 14px; line-height: 1.8; color: var(--ink); }
+.probe-intro { margin: 0; font-size: 14px; line-height: 1.8; color: var(--ink); }
 .probe-idk { display: block; margin-top: 10px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .probe-st { font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
 .probe-st i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); opacity: 0.8; }

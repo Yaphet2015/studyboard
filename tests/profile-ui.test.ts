@@ -146,6 +146,7 @@ describe("confirmation presentation", () => {
           mode === "confirm"
             ? "我记得你的一些基础，先确认 1–2 个点就开始。"
             : "先用约 3 道题找到你的起点，路线会从那里开始。",
+        ...(mode === "confirm" ? { confirm: true } : {}),
       });
     }
   });
