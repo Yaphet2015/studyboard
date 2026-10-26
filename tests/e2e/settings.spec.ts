@@ -96,7 +96,7 @@ test("custom Agent instructions survive reopening settings and can be cleared", 
   await expect(instructions).toHaveValue("");
 });
 
-test("学习画像 is read-only and shows empty copy and a quiet footer", async ({ page }) => {
+test("学习画像 is read-only and shows a dashed empty state without a footer", async ({ page }) => {
   await gotoApp(page);
   await page.keyboard.press("ControlOrMeta+.");
   const settings = page.getByRole("dialog", { name: "设置" });
@@ -104,8 +104,9 @@ test("学习画像 is read-only and shows empty copy and a quiet footer", async 
   await expect(nav.getByRole("button").first()).toHaveText("学习画像");
   await nav.getByRole("button", { name: "学习画像" }).click();
   const profile = settings.locator(".profile-section");
-  await expect(profile).toContainText("随着学习，我会逐渐了解你。");
-  await expect(profile.locator(".profile-updated")).toHaveText("最近更新于 暂无");
+  await expect(profile).toContainText("还没有画像。做一次摸底，或把卡片学懂，我就会开始了解你。");
+  await expect(profile.locator(".profile-updated")).toHaveCount(0);
+  await expect(profile.locator(".profile-empty")).toHaveCSS("border-top-style", "dashed");
   await expect(profile.locator("input, textarea, button, [contenteditable=true]")).toHaveCount(0);
   await expect(profile.getByRole("status")).toHaveCount(0);
 });
@@ -121,8 +122,8 @@ test("学习画像 displays saved prose and relative session time without editin
   await settings.getByRole("button", { name: "学习画像" }).click();
   const profile = settings.locator(".profile-section");
   await expect(profile.locator(".profile-text")).toHaveText("你理解折射，对全反射还不熟悉。");
-  await expect(profile.locator(".profile-updated")).toHaveText(/最近更新于 \d{2}:\d{2}/);
-  await expect(profile.locator("time")).toHaveAttribute("datetime", /T/);
+  await expect(profile.locator(".profile-updated")).toHaveText(/最近更新于 今天 \d{2}:\d{2}/);
+  await expect(profile.locator("article footer time")).toHaveAttribute("datetime", /T/);
   await expect(profile.locator("input, textarea, button, [contenteditable=true]")).toHaveCount(0);
   expect(await profile.locator(".profile-updated").evaluate(el => getComputedStyle(el).fontSize)).toBe("12px");
 });

@@ -6,6 +6,7 @@ import {
   HardDrive,
   Upload,
   Info,
+  Sprout,
   Keyboard,
   KeyRound,
   LockKeyhole,
@@ -20,7 +21,7 @@ import type {
   AISettingsInput,
 } from "../shared/types";
 import { emptyProfile } from "../shared/profile";
-import { sessionClock } from "../model/sessions";
+import { profileClock } from "../model/profile-clock";
 import { api, isDesktop } from "../api";
 import {
   connectionStatusText,
@@ -114,7 +115,7 @@ export function ApiKeyField({
 
 type Section = "profile" | "ai" | "appearance" | "data" | "archive" | "shortcuts" | "about";
 const SECTIONS: [Section, string, React.ReactNode][] = [
-  ["profile", "学习画像", <Info size={16} className="ico" />],
+  ["profile", "学习画像", <Sprout size={16} className="ico" />],
   ["ai", "AI 服务", <Sparkles size={16} className="ico" />],
   ["appearance", "外观", <PaletteIcon size={16} className="ico" />],
   ["data", "画板数据", <HardDrive size={16} className="ico" />],
@@ -232,6 +233,7 @@ export function Settings({
       ref={root}
       tabIndex={-1}
       className="settings-page"
+      lang="zh-CN"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
@@ -270,8 +272,17 @@ export function Settings({
           {section === "profile" && (
             <div className="settings-section profile-section" aria-labelledby="sec-profile">
               <h2 id="sec-profile">学习画像</h2>
-              <p className="profile-text">{profile.text || "随着学习，我会逐渐了解你。"}</p>
-              <small className="profile-updated">最近更新于 {profile.updatedAt ? <time dateTime={profile.updatedAt}>{sessionClock(profile.updatedAt)}</time> : "暂无"}</small>
+              <p className="profile-lede">这是我目前对你的了解，学习时我会据此调整讲法。</p>
+              {profile.text.trim() ? (
+                <article className="profile-card" aria-labelledby="sec-profile">
+                  <p className="profile-text">{profile.text}</p>
+                  {profile.updatedAt && profileClock(profile.updatedAt) && (
+                    <footer className="profile-updated">最近更新于 <time dateTime={profile.updatedAt}>{profileClock(profile.updatedAt)}</time></footer>
+                  )}
+                </article>
+              ) : (
+                <p className="profile-empty">还没有画像。做一次摸底，或把卡片学懂，我就会开始了解你。</p>
+              )}
             </div>
           )}
           {section === "ai" && (
