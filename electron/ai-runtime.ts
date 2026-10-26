@@ -717,6 +717,34 @@ export class AIRuntime {
     return operation.then(() => this.getSettings());
   }
 
+  /** Background prose rewrite, without conversation history, tools or thinking. */
+  async rewriteProfile(prompt: string): Promise<string> {
+    await this.settingsWrite;
+    if (this.closed || !this.getSettings().configured) throw new Error(MISSING_KEY);
+    const model = this.models.getModel("openai", this.model);
+    if (!model) throw new Error("Missing model");
+    const reply = await this.models.completeSimple(
+      model,
+      { messages: [{ role: "user", content: prompt, timestamp: Date.now() }] },
+      {
+        maxTokens: 1600,
+        fetch: globalThis.fetch,
+        signal: AbortSignal.timeout(90000),
+        // Compatible gateways may prefix model ids (e.g. deepseek/deepseek-v4.1-flash),
+        // which pi-ai does not recognize as DeepSeek for its automatic thinking-off payload.
+        onPayload: (payload) =>
+          /(?:^|\/)deepseek-/i.test(model.id)
+            ? { ...(payload as Record<string, unknown>), thinking: { type: "disabled" } }
+            : undefined,
+      },
+    );
+    if (reply.stopReason !== "stop") throw new Error("Profile rewrite failed");
+    return reply.content
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
+      .join("");
+  }
+
   private installProvider(): void {
     this.models.setProvider(buildProvider(this.baseUrl, this.model));
   }

@@ -256,6 +256,7 @@ export interface LadderLevel {
   id?: string;
   /** The point this one builds on. */
   buildsOn?: string;
+  prior?: "known" | "shaky" | "none";
   desc: string;
   keyPoints: string[];
   probe: { type: "choice" | "explain"; q: string; options?: string[]; answer?: number };
@@ -272,6 +273,7 @@ export interface ProbeAnswer {
 }
 /** Internal bookkeeping (README §4); never rendered or exported. */
 export interface ProbeMeta {
+  mode?: "full" | "partial" | "confirm";
   expansions: number;
   refines: number;
   /** Pairs "lo|hi" a refine was tried on. */
@@ -480,6 +482,8 @@ export interface AIHistory {
   running: boolean;
 }
 export interface AtlasAPI {
+  getProfile(): Promise<import("./profile.js").UserProfile>;
+  onProfileChanged?(callback: (profile: import("./profile.js").UserProfile) => void): () => void;
   /** Host OS from the preload ("darwin", "win32", …); "web" in the browser preview. */
   platform: string;
   /** Native fullscreen changes (macOS hides the traffic lights there). */

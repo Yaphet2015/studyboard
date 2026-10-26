@@ -16,6 +16,9 @@ const probe = vi.hoisted(() => ({
     model: string;
     apiKey?: string;
     maxTokens?: number;
+    fetch?: typeof fetch;
+    reasoning?: unknown;
+    payload?: unknown;
     context: string;
   }[],
   makeStream: undefined as unknown as (...args: any[]) => any,
@@ -30,6 +33,9 @@ async function install() {
       model: model.id,
       apiKey: options?.apiKey,
       maxTokens: options?.maxTokens,
+      fetch: options?.fetch,
+      reasoning: options?.reasoning,
+      payload: options?.onPayload?.({ model: model.id }, model),
       context: JSON.stringify(context),
     });
     const events = createAssistantMessageEventStream();
@@ -128,6 +134,23 @@ afterEach(async () => {
 });
 
 describe("「测试连接」 probe", () => {
+  it("rewrites profile prose through the configured provider with system fetch and thinking off", async () => {
+    const runtime = createRuntime();
+    await runtime.setSettings({ ...local, apiKey: "LOCAL" });
+    expect(await runtime.rewriteProfile("旧文案与新证据")).toBe("ok");
+    expect(probe.calls).toHaveLength(1);
+    expect(probe.calls[0]).toMatchObject({ model: local.model, fetch: globalThis.fetch, reasoning: undefined, maxTokens: 1600 });
+    expect(probe.calls[0].context).toContain("旧文案与新证据");
+  });
+  it("explicitly disables thinking for gateway-prefixed DeepSeek profile rewrites", async () => {
+    const runtime = createRuntime();
+    await runtime.setSettings({ ...local, model: "deepseek/deepseek-v4.1-flash", apiKey: "LOCAL" });
+    await runtime.rewriteProfile("认知总结");
+    expect(probe.calls[0].payload).toEqual({
+      model: "deepseek/deepseek-v4.1-flash",
+      thinking: { type: "disabled" },
+    });
+  });
   it("makes one minimal request with the unsaved settings and reports model + latency", async () => {
     const runtime = createRuntime();
     const result = await runtime.testConnection({

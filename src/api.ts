@@ -11,6 +11,7 @@ import {
 } from "./shared/transfer";
 import { downloadFile } from "./export-file";
 import { boardProgress, withProgress } from "./model/progress";
+import { emptyProfile, profileSchema } from "./shared/profile";
 const key = PREVIEW_KEY;
 const historiesKey = "studyboard-preview-histories-v1";
 function readHistories(): Record<string, Record<string, ChatMessage[]>> {
@@ -105,6 +106,16 @@ const preview: AtlasAPI = {
       throw error;
     }
     return board;
+  },
+  async getProfile() {
+    const key = "studyboard-preview-profile-v1";
+    const raw = localStorage.getItem(key);
+    try { if (raw) return profileSchema.parse(JSON.parse(raw)); } catch {
+      localStorage.setItem(`${key}-corrupt-${Date.now()}`, raw!);
+    }
+    const profile = emptyProfile();
+    localStorage.setItem(key, JSON.stringify(profile));
+    return profile;
   },
   async getAISettings() {
     return {
