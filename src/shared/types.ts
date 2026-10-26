@@ -274,6 +274,10 @@ export interface ProbeAnswer {
 /** Internal bookkeeping (README §4); never rendered or exported. */
 export interface ProbeMeta {
   mode?: "full" | "partial" | "confirm";
+  /** Optional model-authored opening; the panel supplies a fallback. */
+  confirmIntro?: string;
+  /** Answer count when confirmation failed; identifies the first full question. */
+  confirmFailedAt?: number;
   expansions: number;
   refines: number;
   /** Pairs "lo|hi" a refine was tried on. */

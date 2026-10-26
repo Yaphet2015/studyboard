@@ -254,7 +254,7 @@ export function answerProbe(s: ProbeState, answer: Omit<ProbeAnswer, "level" | "
   const index = answer.pointId ? s.ladder.findIndex((p) => pointId(p) === answer.pointId) : step.kind === "ask" ? step.index : (answer.level ?? 0);
   const point = s.ladder[index];
   const a: ProbeAnswer = { ...answer, level: index, ...(point ? { pointId: pointId(point) } : {}) };
-  const meta = s.meta?.mode === "confirm" && a.verdict !== "correct" ? { ...s.meta, mode: "full" as const } : s.meta;
+  const meta = s.meta?.mode === "confirm" && a.verdict !== "correct" ? { ...s.meta, mode: "full" as const, confirmFailedAt: s.answers.length + 1 } : s.meta;
   return settle({ ...s, meta, answers: [...s.answers, a] });
 }
 
@@ -298,6 +298,12 @@ export function skipProbe(s: ProbeState | undefined): ProbeState {
   const step = nextStep(base);
   return { ...base, frontier: step.kind === "done" ? step.frontier : 0 };
 }
+/** Declining confirmation starts the ordinary full probe with no confirmation answers. */
+export function leaveConfirmation(s: ProbeState): ProbeState {
+  const fresh = newProbe(s.ladder);
+  return { ...fresh, meta: { ...fresh.meta!, mode: "full", tokens: s.meta?.tokens } };
+}
+
 /** 重新摸底: the same (cached) chain, answers cleared. */
 export const restartProbe = (s: ProbeState): ProbeState => newProbe(s.ladder);
 

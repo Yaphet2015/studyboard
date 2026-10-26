@@ -35,7 +35,7 @@ export const beatProgress = (n: ConceptNode) =>
 
 export function nextStep(board: Board, skip: ReadonlySet<string> = new Set()): NextStep {
   if (board.probe?.status === "asking")
-    return { kind: "probe", why: "先用约 3 道题找到你的起点，路线会从那里开始。" };
+    return { kind: "probe", why: board.probe.meta?.mode === "confirm" ? "我记得你的一些基础，先确认 1–2 个点就开始。" : "先用约 3 道题找到你的起点，路线会从那里开始。" };
   const route = routeOf(board);
   if (!route.length)
     return board.nodes.some((n) => n.parentId !== null)

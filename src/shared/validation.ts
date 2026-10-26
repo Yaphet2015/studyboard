@@ -312,6 +312,8 @@ export const probeStateSchema = z
     meta: z
       .object({
         mode: z.enum(["full", "partial", "confirm"]).optional(),
+        confirmIntro: z.string().max(500).optional(),
+        confirmFailedAt: z.number().int().min(1).max(10).optional(),
         expansions: z.number().int().min(0).max(10),
         refines: z.number().int().min(0).max(10),
         refined: z.array(z.string().max(40)).max(20),

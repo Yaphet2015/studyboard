@@ -150,7 +150,7 @@ import { runGate, roughTokens } from "./model/novelty";
 import { applyGate } from "./model/gate";
 import { learnerProfile, setLearnerProfile } from "./model/profile-context";
 import { profileText } from "./shared/profile";
-import { answerProbe, applyExpand, applyFrontier, applyRefine, bounds as probeBounds, cacheChain, cachedChain, chainKey, chainPrompt, failRecheck, gradePrompt, localGrade, newProbe, nextStep as probeStep, parseGrade, parsePoints, probeLearner, refinePrompt, restartProbe, skipProbe } from "./model/probe";
+import { answerProbe, applyExpand, applyFrontier, applyRefine, bounds as probeBounds, cacheChain, cachedChain, chainKey, chainPrompt, failRecheck, gradePrompt, localGrade, newProbe, nextStep as probeStep, parseGrade, parsePoints, probeLearner, refinePrompt, restartProbe, leaveConfirmation, skipProbe } from "./model/probe";
 import { afterChildSealed, analogyPrompt, isStuck, parseAnalogy, putOff, splitNote } from "./model/stuck";
 import { parseWrap, wrapPrompt } from "./model/wrap";
 import { ProbePanel } from "./components/ProbePanel";
@@ -1507,8 +1507,14 @@ export default function App() {
   const skipProbeQ = useCallback(() => {
     const b = boardRef.current;
     if (!b) return;
+    if (b.probe?.meta?.mode === "confirm") {
+      const full = leaveConfirmation(b.probe);
+      edit((current) => ({ ...current, probe: full }));
+      void advanceProbe(full);
+      return;
+    }
     finishProbe(skipProbe(b.probe));
-  }, [finishProbe]);
+  }, [advanceProbe, edit, finishProbe]);
   const reprobe = useCallback(() => {
     const b = boardRef.current;
     if (!b?.probe?.ladder.length) return startProbe();
