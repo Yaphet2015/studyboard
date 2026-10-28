@@ -1,3 +1,5 @@
+import { AgentEdits } from "./components/AgentEditProse";
+import { planAgentEdits, editDuration, existingBodyChanges, type AgentEdit } from "./model/agent-edit";
 import {
   useCallback,
   useEffect,
@@ -324,8 +326,6 @@ export default function App() {
     completionQueues = useRef(new Map<string, Promise<void>>());
   /** The chat turn in flight per note (its own stickyId), so 停止 can stop it. */
   const chatActive = useRef(new Map<string, string>());
-  /** Stops a just-applied route edit changed: highlighted for 1.2s. */
-  const [flash, setFlash] = useState<Set<string>>(() => new Set());
   /** Act on a chat proposal: 应用 / 撤销 / 取消 / 开始第 N 站. Set once the handlers exist. */
   const proposalActRef = useRef<(noteId: string, messageId: string, act: "apply" | "undo" | "cancel" | "start") => void>(() => {});
   /** Route snapshots from before each applied proposal, for its 撤销 (this session only). */
@@ -384,8 +384,49 @@ export default function App() {
       ),
     );
   }, []);
-  const putBoard = useCallback((next: Board, record = true) => {
+  const [agentEdits, setAgentEdits] = useState<ReadonlyMap<string, AgentEdit>>(new Map());
+  useEffect(() => {
+    if (!agentEdits.size) return;
+    const end = Math.min(...[...agentEdits.values()].map(e => e.start + editDuration(e)));
+    const timer = setTimeout(() => {
+      setAgentEdits(current => new Map(
+        [...current].filter(([, e]) => e.start + editDuration(e) > performance.now()),
+      ));
+    }, Math.max(0, end - performance.now()) + 1);
+    return () => clearTimeout(timer);
+  }, [agentEdits]);
+  useEffect(() => setAgentEdits(new Map()), [board?.id]);
+  const editPositions = useRef(new Map<string, { x: number; y: number }>());
+  // Keep canvas coordinates through body-only changes, including final height measurement.
+  const stablePositions = useRef<{
+    signature: string;
+    positions: Map<string, { x: number; y: number }>;
+  } | null>(null);
+  const positionSignature = (b: Board) => b.id + JSON.stringify(
+    b.nodes.map(n => [n.id, n.parentId, n.order, n.title]),
+  );
+  const putBoard = useCallback((next: Board, record = true, agent = false) => {
     const previous = boardRef.current;
+    if (previous) {
+      const planned = planAgentEdits(
+        previous, next, editPositions.current, agent,
+        matchMedia("(prefers-reduced-motion: reduce)").matches, performance.now(),
+      );
+      if (!agent && previous.nodes.some(n => next.nodes.find(x => x.id === n.id)?.body !== n.body))
+        stablePositions.current = null;
+      if (planned.size) {
+        stablePositions.current = {
+          signature: positionSignature(next), positions: new Map(editPositions.current),
+        };
+      }
+      setAgentEdits(current => {
+        const retained = new Map([...current].filter(([id, e]) =>
+          previous.id === next.id && next.nodes.find(n => n.id === id)?.body === e.after,
+        ));
+        for (const [id, e] of planned) retained.set(id, e);
+        return retained;
+      });
+    }
     if (record && previous?.id === next.id)
       setPast((p) => [...p.slice(-29), structuredClone(previous)]);
     const value = { ...next, updatedAt: now() };
@@ -457,7 +498,14 @@ export default function App() {
       }
       if (isCurrent && run.changed && run.status === "running" && run.draft) {
         canvasPreviewRunId.current = run.id;
-        setCanvasPreview(reconcileCanvasResult(boardRef.current!, run.draft));
+        const current = boardRef.current!;
+        const preview = reconcileCanvasResult(current, run.draft!);
+        // Structural preview stays live; existing prose changes only at commit, under its wash.
+        const bodies = new Map(current.nodes.map(n => [n.id, n.body]));
+        setCanvasPreview({
+          ...preview,
+          nodes: preview.nodes.map(n => ({ ...n, body: bodies.get(n.id) ?? n.body })),
+        });
       }
       if (run.status === "ready" && !canvasCommitting.current.has(run.id)) {
         canvasCommitting.current.add(run.id);
@@ -480,12 +528,12 @@ export default function App() {
                 ? reconcileCanvasResult(local, result, current ?? undefined)
                 : result;
               if (boardRef.current?.id === run.boardId) {
-                putBoard(next, run.changed);
+                putBoard(next, run.changed, true);
                 setCanvasPreview(null);
                 canvasWriteLocked.current = false;
               } else boardCache.current.set(run.boardId, next);
             }
-            showToast(run.summary || "画布修改已完成，可撤销恢复。");
+            if (!current || !existingBodyChanges(current, result).length) showToast(run.summary || "画布修改已完成，可撤销恢复。");
           } catch (error) {
             setCanvasPreview(null);
             canvasWriteLocked.current = false;
@@ -851,7 +899,7 @@ export default function App() {
                   next = withProposal(next, job.noteId, job.messageId, { state: "applied", added: applied.added.length });
                   reExpandDone = `已按你的要求重做下层：新增 ${applied.added.length} 张，原来的 ${oldCount} 张已归档，可以在这条回复里撤销。`;
                 } else if (job) reExpandDone = "这次没有生成可用的新卡，原来的下层没动。可以换个说法，再点应用重试。";
-                showToast(
+                if (!existingBodyChanges(target, next).length) showToast(
                   reExpandDone ? reExpandDone :
                   applied.added.length
                     ? applied.mergedInto.length
@@ -871,7 +919,7 @@ export default function App() {
                   meta.request.mode === "expand" ? "expand" : "map",
                   meta.request.context,
                 );
-                showToast(
+                if (!existingBodyChanges(target, next).length) showToast(
                   next.nodes.length === target.nodes.length
                     ? "这次没有找到值得补充的新概念。你仍可以继续提问或稍后再试。"
                     : "已展开新的概念。你可以继续调整它们。",
@@ -906,7 +954,7 @@ export default function App() {
                   enrichRef.current(next, meta.anchor, added);
                 if (boardRef.current?.id === target.id) {
                   // A re-expansion that landed is one ⌘Z step; a plain expansion has never been.
-                  putBoard(next, !!meta?.reExpand);
+                  putBoard(next, !!meta?.reExpand, true);
                 } else {
                   next = { ...next, updatedAt: now() };
                   boardCache.current.set(next.id, next);
@@ -1789,6 +1837,8 @@ export default function App() {
           : snapshot;
       boardRef.current = previous;
       boardCache.current.set(previous.id, previous);
+      setAgentEdits(new Map());
+      stablePositions.current = null;
       setBoard(previous);
       setSaveStatus("saving");
       return p.slice(0, -1);
@@ -2027,7 +2077,7 @@ export default function App() {
     if (p.state !== "pending") return;
     if (p.type === "editRoute") {
       const rows = previewRoute(b, p.ops);
-      const { board: next, changed } = applyRouteOps(b, p.ops, `chat-${messageId}`, now(), () => newId("concept"));
+      const { board: next } = applyRouteOps(b, p.ops, `chat-${messageId}`, now(), () => newId("concept"));
       if (next === b) return setProposal(noteId, messageId, { state: "expired" });
       routeSnapshots.current.set(messageId, {
         nodes: b.nodes,
@@ -2036,10 +2086,8 @@ export default function App() {
         cardArchives: b.cardArchives,
         links: noteLinks(b),
       });
-      edit(() => next);
+      putBoard(next, true, true);
       setProposal(noteId, messageId, { state: "applied", rows } as Partial<ChatProposal>);
-      setFlash(new Set(changed));
-      setTimeout(() => setFlash(new Set()), 1200);
       return;
     }
     if (p.type === "reExpand") {
@@ -2306,13 +2354,27 @@ export default function App() {
     () => layoutTree(board?.nodes ?? [], layoutOptions),
     [board?.nodes, layoutOptions],
   );
-  const layout = useMemo(
+  const computedLayout = useMemo(
     () =>
       shown === board
         ? baseLayout
         : layoutTree(shown?.nodes ?? [], layoutOptions),
     [shown, board, baseLayout, layoutOptions],
   );
+  const layout = useMemo(() => {
+    const frozen = stablePositions.current;
+    if (!board || frozen?.signature !== positionSignature(board)) {
+      stablePositions.current = null;
+      return computedLayout;
+    }
+    return {
+      ...computedLayout,
+      positions: new Map([...computedLayout.positions].map(([id, pos]) =>
+        [id, { ...pos, ...frozen.positions.get(id) }],
+      )),
+    };
+  }, [computedLayout, board]);
+  editPositions.current = new Map([...layout.positions].map(([id, p]) => [id, { x: p.x, y: p.y }]));
   const slotRef = useRef<{ id: string; slot: Slot } | null>(null);
   configured.current = settings.configured;
   /**
@@ -2620,7 +2682,6 @@ export default function App() {
           isNext: nextId === n.id,
           lit: !!board.wrap?.lit.includes(n.id),
           ...(routePreview.get(n.id) ? { preview: routePreview.get(n.id) } : {}),
-          ...(flash.has(n.id) ? { flash: true } : {}),
           ...(nextId === n.id ? { onStartNext: () => startNextRef.current() } : {}),
           // Ghost hints only on the current stop or a card the learner picked (no 大海感).
           ...(settings.configured && tool === "select" && (!board.route?.length || nextId === n.id || selectedNodeId === n.id)
@@ -2659,7 +2720,6 @@ export default function App() {
     return out;
   }, [
     routePreview,
-    flash,
     shown,
     board,
     layout,
@@ -2844,7 +2904,7 @@ export default function App() {
       </div>
     );
   return (
-    <main
+    <AgentEdits.Provider value={agentEdits}><main
       style={{ "--sidebar-expanded-w": `${sidebarWidth}px` } as CSSProperties}
       className={`app tool-${tool} ${sidebarResizing ? "sidebar-resizing" : ""} ${!mobile ? "with-sidebar" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${drawerNote ? "with-drawer" : ""} ${spacePan ? "space-pan" : ""} ${panning ? "is-panning" : ""}`}
     >
@@ -3587,6 +3647,6 @@ export default function App() {
           </section>
         </div>
       )}
-    </main>
+    </main></AgentEdits.Provider>
   );
 }

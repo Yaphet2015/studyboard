@@ -550,7 +550,7 @@ export function Drawer({
             {study ? (
               <StopBeats card={anchor} study={study} />
             ) : (
-              anchor.body && <CardProse body={anchor.body} />
+              anchor.body && <CardProse body={anchor.body} cardId={anchor.id} />
             )}
             {anchor.visual && (!study || anchor.status === "explained" || (anchor.beat ?? "guess") !== "guess") && <StructuredVisual visual={anchor.visual} />}
           </section>
