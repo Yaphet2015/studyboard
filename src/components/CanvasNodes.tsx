@@ -1,3 +1,4 @@
+import { AgentEditProse, AgentEdits } from "./AgentEditProse";
 import { Menu } from "./Drawer";
 import {
   ANGLE_HINT,
@@ -5,7 +6,7 @@ import {
   DIG_ANGLES,
   type DigAngle,
 } from "../model/angles";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useContext, useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   Handle,
   NodeToolbar,
@@ -81,8 +82,6 @@ export type CardData = {
   lit?: boolean;
   /** A pending chat route edit would replace or remove this stop (shown before 应用). */
   preview?: "replace" | "remove";
-  /** Just changed by an applied route edit: a 1.2s highlight. */
-  flash?: boolean;
   onStartNext?: () => void;
 };
 export type GhostData = { [key: string]: unknown; w: number };
@@ -485,6 +484,7 @@ export function faceText(body: string): string {
 
 export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
   const n = data.concept;
+  const edits = useContext(AgentEdits);
   // Stamp only when the status changes while mounted, not on first paint.
   const first = useRef(n.status);
   const animate = first.current !== n.status;
@@ -499,7 +499,7 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
   return (
     <article
       {...attention}
-      className={`card s-${n.status} ${selected || data.noteOpen ? "is-selected" : ""} ${animate ? "animate" : ""} ${data.dimmed ? "dimmed" : ""} ${data.lit ? "lit" : ""} ${data.preview ? `pv-${data.preview}` : ""} ${data.flash ? "route-flash" : ""} ${hintsOpen ? "hints-open" : ""} ${controlsActive ? "hint-controls-active" : ""}`}
+      className={`card s-${n.status} ${selected || data.noteOpen ? "is-selected" : ""} ${animate ? "animate" : ""} ${data.dimmed ? "dimmed" : ""} ${data.lit ? "lit" : ""} ${data.preview ? `pv-${data.preview}` : ""} ${hintsOpen ? "hints-open" : ""} ${controlsActive ? "hint-controls-active" : ""}`}
       aria-busy={data.generating || undefined}
     >
       {data.generating && <BorderBeam />}
@@ -518,7 +518,7 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
         {data.no && <span className="no">{data.no}</span>}
       </div>
       {/* Compact face: the first sentence or two of the prose; the drawer shows all of it. */}
-      {n.body && <p className="face-body">{faceText(n.body)}</p>}
+      {(n.body || edits.get(n.id)?.after === n.body) && <AgentEditProse body={n.body} cardId={n.id} className="face-body" project={faceText} />}
       {data.isNext && data.onStartNext && (
         <button
           className="btn primary start-stop nodrag nopan"

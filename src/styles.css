@@ -5424,10 +5424,6 @@ h2.workspace-section span {
 .card.pv-remove {
   opacity: 0.7;
 }
-.card.route-flash {
-  box-shadow: var(--ring);
-  transition: box-shadow 0.3s ease;
-}
 .drawer .msg.chat .route-diff {
   margin-top: 10px;
   padding: 10px 12px;
@@ -5523,3 +5519,22 @@ h2.workspace-section span {
 .profile-text { margin: 0; font-size: 16px; line-height: 1.9; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .settings-page .profile-updated { display: block; margin-top: 20px; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 12px; color: var(--sb-ink3t); }
 .profile-empty { margin: 0; padding: 34px 28px; border: 1.25px dashed var(--border); border-radius: 10px; text-align: center; font-size: 13px; line-height: 1.8; color: var(--sb-ink3t); }
+
+:root { --agent-edit-wash: rgb(200 68 42 / 8%); }
+:root.dark { --agent-edit-wash: rgb(240 106 72 / 10%); }
+.agent-edit-prose { position: relative; overflow: visible !important; display: block !important; }
+.agent-edit-old { display: block; position: relative; }
+.agent-edit-new { position: absolute; inset: 0 0 auto; }
+.agent-edit-new [data-change] { opacity: 0; }
+.agent-edit-placeholder::before { content: attr(data-text); visibility: hidden; }
+.agent-edit-wash {
+  position: absolute; pointer-events: none; left: -8px; right: -8px; top: -6px;
+  height: 0; opacity: 0; border-radius: 8px; background: var(--agent-edit-wash);
+  mask-image: linear-gradient(#000 calc(100% - 14px), transparent);
+}
+:root.dark .agent-edit-wash.reduced { background: rgb(240 106 72 / 8%); }
+.card .face-body .agent-edit-old,
+.card .face-body .agent-edit-new {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.card-list-prose { margin: 0; white-space: pre-wrap; }

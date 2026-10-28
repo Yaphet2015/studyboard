@@ -1,3 +1,4 @@
+import { AgentEditProse } from "./AgentEditProse";
 import { useState } from "react";
 import { Check } from "lucide-react";
 import type { Beat, ConceptNode } from "../shared/types";
@@ -19,17 +20,22 @@ export interface StudyProps {
 const BULLET = /^\s*([-•·]|\d+[.、])\s*/;
 
 /** Title + natural prose (pre-wrap keeps paragraphs); a list only when every line is an item. */
-export function CardProse({ body }: { body: string }) {
+export function CardProse({ body, cardId }: { body: string; cardId?: string }) {
   const lines = body.split("\n").filter((l) => l.trim());
   if (lines.length >= 2 && lines.every((l) => BULLET.test(l)))
     return (
       <ul className="card-list">
         {lines.map((l, i) => (
-          <li key={i}>{l.replace(BULLET, "")}</li>
+          <li key={i}>
+            <AgentEditProse
+              body={body} cardId={cardId} className="card-list-prose"
+              project={text => (text.split("\n").filter(l => l.trim())[i] ?? "").replace(BULLET, "")}
+            />
+          </li>
         ))}
       </ul>
     );
-  return <p className="card-body">{body}</p>;
+  return <AgentEditProse body={body} cardId={cardId} className="card-body" />;
 }
 
 /** The four beats of one stop: 先猜 → 学 → 讲 → 测; passing 测 earns the A seal. */
@@ -93,7 +99,7 @@ export function StopBeats({ card, study }: { card: ConceptNode; study: StudyProp
           </li>
         ))}
       </ol>
-      {beat !== "guess" && <CardProse body={card.body} />}
+      {beat !== "guess" && <CardProse body={card.body} cardId={card.id} />}
       {beat === "guess" && (
         <div className="beat-pane">
           <span className="lab">第 1 拍 · 先猜一猜</span>
