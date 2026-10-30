@@ -169,6 +169,7 @@ for (const mode of ["light", "dark"] as const) {
     await expect(drawer.locator(".route-diff .focus")).toContainText(
       "补齐剩余 6 分",
     );
+    await expect(drawer.locator(".route-diff .focus .rd-old")).toHaveCount(0);
     const attachment = drawer.locator("details.artifact-attachment");
     await expect(attachment).toHaveAttribute("open", "");
     await expect(attachment).toContainText("我的产出物 · 2/3 块");

@@ -147,8 +147,8 @@ function RouteDiff({ message, chat }: { message: ChatMessage; chat: ChatActions 
             )}
             {r.kind === "focus" && (
               <>
-                <span className="rd-old"><s>{r.from} · {r.title}</s></span>
-                <span className="rd-new">{r.to} · {r.title}<span className="rd-note">重点：{r.focus}</span></span>
+                <span className="rd-new">{r.to} · {r.title}</span>
+                <span className="rd-note">重点：{r.focus}</span>
               </>
             )}
           </li>
