@@ -1,3 +1,4 @@
+import { cardMastered } from "../model/goal";
 import { useRef, useState } from "react";
 import type { ConceptNode } from "../shared/types";
 
@@ -35,10 +36,10 @@ export function WeightFooter({
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
-      {card.status === "explained" ||
-      (weight === "background" && card.beat === "done") ? (
+      {cardMastered(card) ||
+      (weight === "background" && (card.beat === "done" || card.status === "explained")) ? (
         <span className="lab">
-          {card.status === "explained" ? "已掌握" : "已读过"}
+          {cardMastered(card) ? "已掌握" : "读过"}
         </span>
       ) : weight === "background" ? (
         <button className="btn sm" onClick={actions.onRead}>
@@ -77,7 +78,7 @@ export function WeightFooter({
             >
               <input
                 aria-label="写下你的猜测"
-                placeholder="写下你的猜测…"
+                placeholder="你觉得呢？"
                 value={text}
                 maxLength={2000}
                 onChange={(e) => setText(e.target.value)}

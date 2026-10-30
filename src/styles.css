@@ -5540,6 +5540,7 @@ h2.workspace-section span {
 .card-list-prose { margin: 0; white-space: pre-wrap; }
 
 /* Goal-driven cards reuse the existing paper, ink, accent and rule palette. */
+.srcl a { color: inherit; text-underline-offset: 2px; }
 .srcl { font-size: 11px; color: var(--ink-3); margin-top: 8px; }
 .card:has(.weight-footer) .face-body { display: block; overflow: visible; }
 .weight-footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rule); font-size: 13px; }

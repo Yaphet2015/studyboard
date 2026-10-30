@@ -1,3 +1,4 @@
+import { cardMastered } from "../model/goal";
 import { CardSourceLine } from "./CardSourceLine";
 import { WeightFooter, type WeightActions } from "./WeightFooter";
 import { AgentEditProse, AgentEdits } from "./AgentEditProse";
@@ -508,11 +509,11 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
       {data.generating && <BorderBeam />}
       {data.noteOpen && <NoteTab />}
       <Ports linkMode={data.linkMode} />
-      {n.status === "explained" && data.station === undefined && <Seal light={n.seal === "probe"} />}
+      {cardMastered(n) && data.station === undefined && <Seal light={n.seal === "probe"} />}
       {data.preview === "replace" && <span className="pv-tag">待替换</span>}
       {data.station !== undefined && data.preview !== "remove" && (
-        <span className={`station ${data.isNext ? "next" : ""} ${n.status === "explained" ? "sealed" : ""}`} aria-label={`第 ${data.station} 站`}>
-          {n.status !== "unseen" && <i className={`station-dot ${n.status === "explained" ? "mastered" : "read"}`} aria-label={n.status === "explained" ? "掌握" : "读过"} />}
+        <span className={`station ${data.isNext ? "next" : ""} ${cardMastered(n) ? "sealed" : ""}`} aria-label={`第 ${data.station} 站`}>
+          {n.status !== "unseen" && <i className={`station-dot ${cardMastered(n) ? "mastered" : "read"}`} aria-label={cardMastered(n) ? "掌握" : "读过"} />}
           <span>第 {data.station} 站</span>
         </span>
       )}

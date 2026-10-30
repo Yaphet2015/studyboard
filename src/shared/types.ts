@@ -340,10 +340,19 @@ export interface PlanGoal {
   constraints: string[];
   experience: string;
 }
+export interface GoalResult {
+  id: string;
+  current?: number;
+  met?: boolean;
+  /** measured: user-provided or checkable source; estimated: model inference. */
+  basis: "measured" | "estimated";
+  evidence: string;
+}
 export interface ArtifactPart {
   stopId: string;
   title: string;
   content: string;
+  results?: GoalResult[];
 }
 export interface BoardPlan {
   /** draft: waiting for the learner to review it; confirmed: drives generation. */

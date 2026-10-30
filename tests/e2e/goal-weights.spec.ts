@@ -46,7 +46,7 @@ for (const mode of ["light", "dark"] as const) {
     page,
   }) => {
     const b = goalBoard();
-    // An extra background card demonstrates 懂了 while station 1 retains its mastery dot.
+    // An extra background card demonstrates 懂了 while station 1 retains a hollow read dot.
     b.nodes.push({
       ...b.nodes[1],
       id: "goal-bg-unread",
@@ -61,7 +61,7 @@ for (const mode of ["light", "dark"] as const) {
     await installFakeAtlas(page, true, "web", [b]);
     await gotoApp(page);
     await expect(
-      card(page, "goal-bg").locator(".station-dot.mastered"),
+      card(page, "goal-bg").locator(".station-dot.read"),
     ).toHaveCount(1);
     await expect(
       card(page, "goal-core").locator(".station-dot.read"),
@@ -70,7 +70,10 @@ for (const mode of ["light", "dark"] as const) {
       0,
     );
     await expect(card(page, "goal-core").locator(".srcl")).toHaveText(
-      "项目测量记录 · 截至 2026-10",
+      "W3C · 截至 2026-10",
+    );
+    await expect(card(page, "goal-core").locator(".srcl a")).toHaveAttribute(
+      "href", "https://www.w3.org/WAI/tutorials/images/",
     );
     await expect(
       card(page, "goal-bg-unread").getByRole("button", {
@@ -84,11 +87,14 @@ for (const mode of ["light", "dark"] as const) {
     await expect(
       card(page, "goal-hard").getByLabel("写下你的猜测"),
     ).toBeVisible();
+    await expect(card(page, "goal-bg")).not.toContainText("已掌握");
+    await expect(card(page, "goal-bg")).toContainText("读过");
+    await expect(card(page, "goal-hard").getByLabel("写下你的猜测")).toHaveAttribute("placeholder", "你觉得呢？");
     await screenshot(page, `01-canvas-${mode}`);
     await card(page, "goal-bg-unread")
       .getByRole("button", { name: "懂了", exact: true })
       .click();
-    await expect(card(page, "goal-bg-unread")).toContainText("已读过");
+    await expect(card(page, "goal-bg-unread")).toContainText("读过");
     const weights = goalBoard();
     weights.id = b.id;
     weights.nodes[1].status = "unseen";
@@ -153,9 +159,9 @@ for (const mode of ["light", "dark"] as const) {
           part: {
             stopId: "goal-core",
             title: "图片说明",
-            content: "已根据用途补齐说明，测得可访问性评分为 84 分。",
+            content: "已根据用途补齐说明，评分估算为 84 分，尚需实测。",
           },
-          results: [{ id: "access", current: 84, evidence: "项目测量记录" }],
+          results: [{ id: "access", current: 84, basis: "estimated", evidence: "按已完成的图片说明检查项推算，尚未实测评分" }],
           suggestion: "建议下一站优先检查图片无法加载时的作品意图。",
           focus: "补齐剩余 6 分对应的说明",
         }),
@@ -166,6 +172,7 @@ for (const mode of ["light", "dark"] as const) {
       .click();
     const drawer = page.locator(".drawer");
     await expect(drawer.locator(".chat b")).toContainText("还差 6分");
+    await expect(drawer.locator(".chat b")).toContainText("估算，依据：");
     await expect(drawer.locator(".route-diff .focus")).toContainText(
       "补齐剩余 6 分",
     );
@@ -199,7 +206,7 @@ for (const mode of ["light", "dark"] as const) {
             title: "验收结果",
             content: "缺图时文字仍能说明作品意图。",
           },
-          results: [{ id: "access", current: 95, evidence: "验收测量" }],
+          results: [{ id: "access", current: 95, basis: "measured", evidence: "用户提供的验收评分" }],
           suggestion: "按清单交付。",
         }),
       ];
@@ -259,7 +266,7 @@ for (const mode of ["light", "dark"] as const) {
             parent: "anchor",
             block: `g${i}`,
             weight: "background",
-            source: "项目记录",
+            source: "W3C https://www.w3.org/WAI/tutorials/images/",
             date: "2026-10",
           })),
           relations: [],

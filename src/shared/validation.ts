@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sourceLink } from "./card-source.js";
 
 /** These limits apply at every IPC and disk boundary, not only in the editor. */
 export const LIMITS = {
@@ -77,11 +78,21 @@ export const planGoalSchema = z.object({
   experience: z.string().max(1000).default(""),
 }).strict();
 export const planGoalValueSchema = z.union([z.string().max(400), planGoalSchema]);
-export const artifactPartSchema = z.object({ stopId: idSchema, title: z.string().max(200), content: z.string().max(2000) }).strict();
+export const goalResultSchema = z.object({
+  id: z.string(),
+  current: z.number().finite().optional(),
+  met: z.boolean().optional(),
+  basis: z.enum(["measured", "estimated"]).default("estimated"),
+  evidence: nonemptyText(500),
+}).strict();
+export const artifactPartSchema = z.object({
+  stopId: idSchema, title: z.string().max(200), content: z.string().max(2000),
+  results: z.array(goalResultSchema).max(8).optional(),
+}).strict();
 const sourceDateSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?$/);
 /** Rich card fields, shared by stored cards and AI output. */
 export const richCardFields = {
-  source: plainText(200).optional(),
+  source: plainText(700).optional(),
   date: sourceDateSchema.optional(),
   weight: cardWeightSchema.default("background").optional(),
   questionPrompt: plainText(400).optional(),
@@ -110,7 +121,7 @@ const aiText = (max: number) => z.preprocess(defang, plainText(max));
  * instead of failing the whole map (plain-text checks still apply, so nothing unsafe is kept).
  */
 const aiRichCardFields = {
-  source: richCardFields.source.catch(undefined),
+  source: plainText(700).refine((s) => !!sourceLink(s), "Source needs an institution/site name and HTTPS URL").optional().catch(undefined),
   date: richCardFields.date.catch(undefined),
   weight: cardWeightSchema.default("background").optional(),
   questionPrompt: richCardFields.questionPrompt.catch(undefined),

@@ -32,7 +32,7 @@ export function goalBoard(): Board {
     parentId: root.id,
     order,
     status: "unseen",
-    source: "项目测量记录",
+    source: "W3C https://www.w3.org/WAI/tutorials/images/",
     date: "2026-10-20",
     check: {
       q: "替换插图时，哪种做法更便于读者理解？",
