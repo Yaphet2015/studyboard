@@ -1,3 +1,4 @@
+import { boardSchema } from "../src/shared/validation";
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -237,7 +238,7 @@ it("cancel after a tool write rejects commit and keeps the official board unchan
   );
   await runtime.cancelCanvasRun(board.id, run.id);
   await expect(runtime.commitCanvasRun(board.id, run.id)).rejects.toThrow();
-  expect((await store.load(board.id))?.nodes).toEqual(board.nodes);
+  expect((await store.load(board.id))?.nodes).toEqual(boardSchema.parse(board).nodes);
   expect((await runtime.getCanvasRun(board.id, run.id))?.status).toBe(
     "cancelled",
   );

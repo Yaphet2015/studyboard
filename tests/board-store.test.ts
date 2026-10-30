@@ -1,3 +1,4 @@
+import { boardSchema } from "../src/shared/validation";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   mkdtemp,
@@ -37,7 +38,7 @@ describe("atomic private board storage", () => {
     board.viewport = { x: 20, y: 30, zoom: 0.8 };
     await store.save(board);
     const reopened = new BoardStore(join(directory, "boards"));
-    expect(await reopened.load(board.id)).toEqual(withProgress(board));
+    expect(await reopened.load(board.id)).toEqual(withProgress(boardSchema.parse(board)));
     expect(await reopened.list()).toEqual([
       {
         id: board.id,
@@ -58,12 +59,12 @@ describe("atomic private board storage", () => {
     board.archivedAt = new Date().toISOString();
     await store.save(board);
     const reopened = new BoardStore(join(directory, "boards"));
-    expect(await reopened.load(board.id)).toEqual(withProgress(board));
+    expect(await reopened.load(board.id)).toEqual(withProgress(boardSchema.parse(board)));
     expect((await reopened.list())[0].archivedAt).toBe(board.archivedAt);
     delete board.archivedAt;
     await reopened.save(board);
     expect((await store.list())[0].archivedAt).toBeUndefined();
-    expect(await store.load(board.id)).toEqual(withProgress(board));
+    expect(await store.load(board.id)).toEqual(withProgress(boardSchema.parse(board)));
   });
   it("serializes rapid writes to the same board and snapshots inputs immediately", async () => {
     const board = createEmptyBoard("initial");
@@ -87,7 +88,7 @@ describe("atomic private board storage", () => {
     expect(await store.load(board.id)).toBeNull();
     await store.delete(board.id);
     await store.save(board);
-    expect(await store.load(board.id)).toEqual(withProgress(board));
+    expect(await store.load(board.id)).toEqual(withProgress(boardSchema.parse(board)));
   });
   it("lists newest boards first", async () => {
     const a = createEmptyBoard("older");
@@ -127,7 +128,7 @@ describe("atomic private board storage", () => {
     expect(await readFile(path, "utf8")).toBe("{broken");
     // A failed read must not poison the per-board queue.
     await store.save(board);
-    expect(await store.load(board.id)).toEqual(withProgress(board));
+    expect(await store.load(board.id)).toEqual(withProgress(boardSchema.parse(board)));
   });
   it("rejects schema-invalid persisted data and mismatched ids", async () => {
     const board = createEmptyBoard("invalid schema");

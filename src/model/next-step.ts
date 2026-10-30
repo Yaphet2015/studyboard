@@ -8,7 +8,9 @@
  * (Rule 2, spaced review, is out of scope; rule 5 is offered only when a stop missed a point.)
  */
 import type { Beat, Board, ConceptNode } from "../shared/types";
-import { routeOf, sealed } from "./route";
+import { routeOf, sealed as mastered } from "./route";
+
+const sealed = (card: ConceptNode) => mastered(card) || card.weight === "background" && card.beat === "done";
 
 export type NextStep =
   | { kind: "continue"; card: ConceptNode; station?: number; beat: Beat; why: string }

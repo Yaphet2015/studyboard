@@ -8,13 +8,13 @@ const gates = (page: Page) => page.evaluate(() => (window as any).__atlasGates a
 const disk = (page: Page) =>
   page.evaluate(() => JSON.parse(localStorage.getItem("fake-atlas-disk")!)[0]);
 
-test("the numbered path: one highlighted stop, the 下一步 bar, four beats, and 测 earns the A seal", async ({ page }) => {
+test("a legacy stop still studies in order; a wrong answer adds a choice footer and mastery uses a dot", async ({ page }) => {
   await installFakeAtlas(page, true, "web", [routedBoard()]);
   await gotoApp(page);
   // Stations are numbered; exactly one is the next step.
-  await expect(card(page, "c-what").locator(".station")).toHaveText("1");
+  await expect(card(page, "c-what").locator(".station")).toHaveText("第 1 站");
   await expect(page.locator(".station.next")).toHaveCount(1);
-  await expect(card(page, "c-when-not").locator(".station.next")).toHaveText("2");
+  await expect(card(page, "c-when-not").locator(".station.next")).toHaveText("第 2 站");
   await expect(card(page, "c-when-not").locator(".next-tag")).toHaveText("下一步");
   const bar = page.getByRole("region", { name: "下一步" });
   await expect(bar).toContainText("下一步 · 第 2 站");
@@ -45,23 +45,18 @@ test("the numbered path: one highlighted stop, the 下一步 bar, four beats, an
   await stop.getByRole("radio", { name: /疾病定义/ }).click();
   await stop.getByLabel("再用一句话说说为什么").fill("定义不符");
   await stop.getByRole("button", { name: /提交/ }).click();
-  await expect(stop.locator(".beat-feedback")).toContainText("还没对");
+  await expect(stop.locator('.weight-footer[data-weight="core"]')).toHaveCount(1);
   expect((await gates(page)).filter((r) => r.mode === "mark")).toHaveLength(1);
-  await stop.getByRole("radio", { name: /等待期/ }).click();
-  await stop.getByLabel("再用一句话说说为什么").fill("第 2 个月还在等待期内");
-  await stop.getByRole("button", { name: /提交/ }).click();
-  await expect(stop).toContainText("这一站讲清楚了");
-  marks = (await gates(page)).filter((r) => r.mode === "mark");
-  expect(marks).toHaveLength(2);
-  expect(marks[1].prompt).toContain("SECRET-KEYPOINT");
-  await expect
-    .poll(async () => (await disk(page)).nodes.find((n: any) => n.id === "c-when-not"))
-    .toMatchObject({ status: "explained", seal: "test", beat: "done", fails: 0 });
-  await expect(card(page, "c-when-not").locator(".seal")).toHaveCount(1);
+  // The upgraded core footer answers the prepared choice without a separate reason field.
+  await stop.locator(".weight-options").getByRole("button", { name: "等待期", exact: true }).click();
+  await expect(stop).toContainText("已掌握");
+  await expect.poll(async () => (await disk(page)).nodes.find((n: any) => n.id === "c-when-not"))
+    .toMatchObject({ weight: "core", status: "explained", seal: "test", beat: "done", fails: 0 });
+  await expect(card(page, "c-when-not").locator(".station-dot.mastered")).toHaveCount(1);
   // The bar moves on to stop 3.
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(bar).toContainText("下一步 · 第 3 站");
-  await expect(card(page, "c-how").locator(".station.next")).toHaveText("3");
+  await expect(card(page, "c-how").locator(".station.next")).toHaveText("第 3 站");
 });
 
 test("换一个 skips to the next stop; a half-done stop is resumed with a welcome", async ({ page }) => {

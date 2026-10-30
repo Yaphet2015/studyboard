@@ -1,3 +1,4 @@
+import { boardSchema } from "../src/shared/validation";
 import { describe, expect, it, vi } from "vitest";
 import { createWalkthroughBoard, newNote } from "../src/model/boards";
 import { cacheMessages } from "../src/model/editor";
@@ -62,7 +63,7 @@ describe("portable learning history", () => {
     expect(imported.notes[0].attachedTo).toEqual(board.notes[0].attachedTo);
     expect(imported.notes[0].contextCards).toEqual(board.notes[0].contextCards);
     expect(imported.notes[0].excludedRefs).toEqual(board.notes[0].excludedRefs);
-    expect(imported.nodes).toEqual(board.nodes);
+    expect(imported.nodes).toEqual(boardSchema.parse(board).nodes);
     expect(imported.relations).toEqual(board.relations);
     expect(imported.scene).toEqual(board.scene);
     const markdown = transferMarkdown(transfer);

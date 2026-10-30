@@ -53,11 +53,15 @@ export function NextStepBar({
       : step.kind === "probe"
         ? "下一步 · 摸底"
         : `下一步${station ? ` · 第 ${station} 站` : ""}`;
+  const weighted = "card" in step && !!step.card.weight;
+  const action = "card" in step ? step.card.weight === "background" ? "读一读" : step.card.weight === "core" ? "回答卡片里的问题" : "说说你的想法" : "";
   const main =
     step.kind === "probe"
       ? step.confirm ? "先确认一下你的基础" : "继续摸底，找到你的起点"
       : step.kind === "wrap"
       ? "把所有站合起来，讲回你的起点问题"
+      : "card" in step && weighted
+        ? `${step.card.title} —— ${action}`
       : step.kind === "continue"
         ? `${step.card.title} —— 继续：${BEAT_LABEL[step.beat]}`
         : step.kind === "deeper"
@@ -65,7 +69,7 @@ export function NextStepBar({
           : `${step.card.title} —— ${ACTION[step.card.beat ?? "guess"]}`;
   const why =
     welcome && step.kind === "continue"
-      ? `欢迎回来。上次做到第 ${station ?? "?"} 站的「${BEAT_LABEL[step.beat]}」，接着来？`
+      ? weighted ? `欢迎回来，接着完成第 ${station ?? "?"} 站。` : `欢迎回来。上次做到第 ${station ?? "?"} 站的「${BEAT_LABEL[step.beat]}」，接着来？`
       : `为什么是它：${step.why}`;
   return (
     <div className="chrome next-step" role="region" aria-label="下一步">

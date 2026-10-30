@@ -1,3 +1,5 @@
+import { GoalPin } from "./GoalSummary";
+import { CardSourceLine } from "./CardSourceLine";
 import { CardProse, StopBeats, type StudyProps } from "./StopBeats";
 import { PlanEditor } from "./PlanEditor";
 import type { BoardPlan } from "../shared/types";
@@ -355,6 +357,11 @@ export function Drawer({
       setScrolled(false);
     }
   }, [opening]);
+  useEffect(() => {
+    // Goal summaries and station results belong at the end of the ordinary conversation.
+    if (!note.messages.at(-1)?.meta?.chat) return;
+    thread.current?.scrollTo({ top: thread.current.scrollHeight });
+  }, [note.messages.length, busy, kickoff?.plan, kickoff?.planning]);
   /** Tick a 小练习 step; stored on the message so it survives reloads. */
   const toggleStep = (messageId: string, index: number) =>
     onChange({
@@ -537,6 +544,7 @@ export function Drawer({
           <X size={18} />
         </button>
       </header>
+      {chat?.board.plan?.goal && <GoalPin goal={chat.board.plan.goal} />}
       <div className="rule-h" />
       <div className="thread" ref={thread} onScroll={onScroll}>
         {scrolled && <div className="fadeTop" aria-hidden="true" />}
@@ -544,13 +552,13 @@ export function Drawer({
           <section className="this-card" aria-label="这张卡">
             <span className="lab">
               {study?.station ? `第 ${study.station} 站 · ` : "这张卡 · "}
-              {study ? "一站 4 拍" : "完整内容"}
+              {study ? "学习" : "完整内容"}
             </span>
             <h2>{anchor.title}</h2>
             {study ? (
               <StopBeats card={anchor} study={study} />
             ) : (
-              anchor.body && <CardProse body={anchor.body} cardId={anchor.id} />
+              anchor.body && <><CardProse body={anchor.body} cardId={anchor.id} /><CardSourceLine card={anchor} /></>
             )}
             {anchor.visual && (!study || anchor.status === "explained" || (anchor.beat ?? "guess") !== "guess") && <StructuredVisual visual={anchor.visual} />}
           </section>
@@ -646,7 +654,7 @@ export function Drawer({
             )}
           </div>
         )}
-        {kickoff && (kickoff.plan || kickoff.planning) && (
+        {kickoff && typeof kickoff.plan?.goal !== "object" && !lastAnswer?.meta?.goalSummary && (kickoff.plan || kickoff.planning) && (
           <PlanEditor
             plan={kickoff.plan}
             planning={!!kickoff.planning}
@@ -656,7 +664,7 @@ export function Drawer({
             onReplan={() => kickoff.onReplan?.()}
           />
         )}
-        {kickoff && lastAnswer && !busy && !kickoff.plan && !kickoff.planning && (
+        {kickoff && lastAnswer && !lastAnswer.meta?.chat && !busy && !kickoff.plan && !kickoff.planning && (
           <span className="lab kickoff-tip">
             先在下面回答它的问题，拆得会更贴合你；也可以直接拟定学习计划，确认前都能修改。
           </span>

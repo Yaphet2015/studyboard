@@ -1,17 +1,20 @@
 // The post-probe chat (v2): one ordinary chat call per message, a slim context, and at most one
 // structured proposal per answer. No classifier and no modes; free text never writes cards.
 import type { AIRequest, Board, ChatMessage, ChatProposal, StickyNote } from "../shared/types";
+import { CHAT_INSTRUCTIONS } from "../shared/chat-instructions";
 import { chatProposalSchema, routeOpSchema } from "../shared/validation";
 import { descendantIds, routeOf, sealed, stationOf, validRouteOps } from "./route";
 import { profileText } from "../shared/profile";
 import { learnerProfile } from "./profile-context";
+import { learnerAnswers } from "./kickoff";
+import { goalReplySchema } from "./goal";
 import { z } from "zod";
 
 /** Rough token estimate (CJK ≈ 1 token per 1.5 characters; ASCII is cheaper, so this overshoots). */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 1.5);
 /** Per-turn budget: the system prompt + this prompt + the answer stay under 3.5k tokens (including the complete learner profile). */
 export const TURN_CAP = 3_500;
-const SYSTEM_TOKENS = 1_000;
+const SYSTEM_TOKENS = estimateTokens(CHAT_INSTRUCTIONS);
 const OUTPUT_TOKENS = 400;
 const HISTORY = 6;
 
@@ -58,6 +61,8 @@ export function chatPrompt(board: Board, note: StickyNote | undefined, text: str
   const head =
     (profileText(learnerProfile()) ? `${profileText(learnerProfile())}\n` : "") +
     `主题：${clip(plain(board.topic), 120)}\n` +
+    `目标：${JSON.stringify(board.plan?.goal ?? null)}\n${board.plan ? "" : "开课摸底：用普通聊天追问 3–5 题，每次一题，依次问产出物、成功标准、约束（期限/预算等）、真实经历与已经知道什么；已回答的不要重复。可给 chips 供点击。收齐后返回 goal 和 ready:true。用户跳过时明确记录未确认，不编造。"}\n` +
+    (!board.plan ? `开场回答（保留各轮）：${JSON.stringify(learnerAnswers(note).map(a => clip(a, 160)))}\n` : "") +
     `路线（✓ 为已讲通）：\n${route}\n` +
     (current
       ? `当前站：第 ${stationOf(board, current.id)} 站「${clip(plain(current.title), 40)}」${current.body ? `：${clip(plain(current.body), 200)}` : ""}\n`
@@ -115,20 +120,20 @@ const rawProposal = z.union([
 function tailStart(text: string): number {
   const fence = text.search(/```(?:json)?\s*\{[\s\S]*$/i);
   if (fence >= 0) return fence;
-  const bare = text.search(/\{\s*"proposal"[\s\S]*$/);
+  const bare = text.search(/\{\s*"(?:proposal|goal|chips|ready)"[\s\S]*$/);
   return bare;
 }
 
 /** The answer text to show while it streams: never the JSON tail, even half-written. */
 export function displayChat(text: string): string {
   const fence = text.indexOf("```");
-  const bare = text.search(/\{\s*"proposal"/);
+  const bare = text.search(/\{\s*"(?:proposal|goal|chips|ready)"/);
   const cut = [fence, bare].filter((i) => i >= 0);
   return (cut.length ? text.slice(0, Math.min(...cut)) : text).trimEnd();
 }
 
 /** Split a reply into text and a proposal checked against the board. Bad JSON ⇒ text only. */
-export function parseChatReply(text: string, board: Board): { reply: string; proposal?: ChatProposal } {
+export function parseChatReply(text: string, board: Board): { reply: string; proposal?: ChatProposal } & z.infer<typeof goalReplySchema> {
   const start = tailStart(text);
   const reply = (start >= 0 ? text.slice(0, start) : text).trim() || displayChat(text).trim();
   if (start < 0) return { reply };
@@ -141,9 +146,10 @@ export function parseChatReply(text: string, board: Board): { reply: string; pro
     return { reply };
   }
   const p = rawProposal.safeParse((parsed as { proposal?: unknown })?.proposal ?? parsed);
-  if (!p.success) return { reply };
-  const proposal = checkProposal(p.data, board);
-  return proposal ? { reply, proposal } : { reply };
+  const extra = goalReplySchema.safeParse(parsed);
+  const fields = extra.success ? extra.data : {};
+  const proposal = p.success ? checkProposal(p.data, board) : undefined;
+  return { reply, ...fields, ...(proposal ? { proposal } : {}) };
 }
 
 /** A station number, or a card title that exactly one non-root card has; the root cannot be re-expanded. */

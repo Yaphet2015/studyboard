@@ -1,3 +1,4 @@
+import { assessmentPrompt, gapMessage, goalText, parseAssessment, structuredGoal, upgradeCard } from "./model/goal";
 import { AgentEdits } from "./components/AgentEditProse";
 import { planAgentEdits, editDuration, existingBodyChanges, type AgentEdit } from "./model/agent-edit";
 import {
@@ -332,6 +333,11 @@ export default function App() {
   const routeSnapshots = useRef(
     new Map<string, Pick<Board, "nodes" | "relations" | "route" | "cardArchives"> & { links: NoteLinks }>(),
   );
+  const planRequestRef = useRef<(board: Board) => void>(() => {});
+  const beginAfterMap = useRef(false);
+  const startFirstRef = useRef<() => void>(() => {});
+  const weightAnswerRef = useRef<(id: string, answer: string, choice: number | null) => Promise<void>>(async () => {});
+  const readCardRef = useRef<(id: string) => void>(() => {});
   const askQuietRef = useRef<
     (mode: "gate" | "mark" | "expand" | "probe" | "regen", prompt: string, stickyId: string, context?: AIRequest["context"]) => Promise<string>
   >(() => Promise.reject(new Error("not ready")));
@@ -735,7 +741,9 @@ export default function App() {
           }
           if (b?.id !== update.boardId) return;
           try {
-            putBoard({ ...b, plan: parsePlan(update.text) }, false);
+            const plan = parsePlan(update.text);
+            const summary = kickoffNote(b)?.messages.filter(m => m.meta?.goalSummary).at(-1)?.meta?.goalSummary;
+            putBoard({ ...b, plan: { ...plan, ...(summary ? { goal: summary } : {}) } }, false);
           } catch (error) {
             showToast(errorText(error));
           }
@@ -774,14 +782,15 @@ export default function App() {
           if (update.status === "error") return;
           const b = boardRef.current;
           if (b?.id !== update.boardId) return;
-          const { reply, proposal } = update.status === "done" ? parseChatReply(update.text, b) : { reply: displayChat(update.text), proposal: undefined };
-          if (!reply && !proposal) {
+          const { reply, proposal, goal, chips, ready } = update.status === "done" ? parseChatReply(update.text, b) : { reply: displayChat(update.text), proposal: undefined, goal: undefined, chips: undefined, ready: false };
+          if (!reply && !proposal && !goal && !chips?.length) {
             if (update.status === "cancelled") showToast("已停止回答。");
             return;
           }
           edit(
             (current) => ({
               ...current,
+              ...(goal && current.plan ? { plan: { ...current.plan, goal } } : {}),
               notes: current.notes.map((n) =>
                 n.id === noteId
                   ? {
@@ -793,7 +802,7 @@ export default function App() {
                           role: "assistant" as const,
                           text: reply || "好。",
                           createdAt: now(),
-                          meta: { chat: true, ...(proposal ? { proposal } : {}) },
+                          meta: { chat: true, ...(proposal ? { proposal } : {}), ...(chips ? { chips } : {}), ...(goal ? { goalSummary: goal } : {}) },
                         },
                       ]),
                     }
@@ -802,6 +811,7 @@ export default function App() {
             }),
             false,
           );
+          if (goal && ready && !b.plan) planRequestRef.current(boardRef.current!);
           return;
         }
         const key = `${update.boardId}/${update.stickyId}`;
@@ -955,6 +965,10 @@ export default function App() {
                 if (boardRef.current?.id === target.id) {
                   // A re-expansion that landed is one ⌘Z step; a plain expansion has never been.
                   putBoard(next, !!meta?.reExpand, true);
+                  if (meta?.request.mode === "map" && beginAfterMap.current) {
+                    beginAfterMap.current = false;
+                    startFirstRef.current();
+                  }
                 } else {
                   next = { ...next, updatedAt: now() };
                   boardCache.current.set(next.id, next);
@@ -1003,6 +1017,9 @@ export default function App() {
     ) => {
       const b = boardRef.current;
       if (!b) return;
+      const reading = attachment?.kind === "node" ? b.nodes.find(n => n.id === attachment.id) : undefined;
+      if (reading?.weight && reading.parentId !== null && reading.status === "unseen")
+        edit(current => ({ ...current, nodes: current.nodes.map(n => n.id === reading.id ? { ...n, status: "exploring" } : n) }), false);
       const exists = (id: string) => b.nodes.some((n) => n.id === id);
       const ctx = chatContext(
         opts.cards === false ? [] : chatSelection.current,
@@ -1127,6 +1144,11 @@ export default function App() {
       edit(
         (current) => ({
           ...current,
+          nodes: current.nodes.map(n => {
+            const selected = chatSelection.current.length === 1 ? chatSelection.current[0] : undefined;
+            const target = selected && current.nodes.some(c => c.id === selected && c.parentId !== null) ? selected : note?.attachedTo?.kind === "node" ? note.attachedTo.id : undefined;
+            return !retry && !/^改目标/.test(prompt.trim()) && n.id === target && n.parentId !== null ? { ...n, ...upgradeCard(n) } : n;
+          }),
           notes: current.notes.map((n) =>
             n.id === noteId
               ? {
@@ -1351,7 +1373,7 @@ export default function App() {
         prompt: planPrompt(
           b.topic,
           learnerAnswers(note),
-          b.probe ? probeLearner(b.probe) : profileText(learnerProfile()),
+          [b.probe ? probeLearner(b.probe) : profileText(learnerProfile()), goalText(kickoffNote(b)?.messages.filter(m => m.meta?.goalSummary).at(-1)?.meta?.goalSummary)].filter(Boolean).join("\n"),
         ),
         context: contextForNote(
           { ...b, notes: [virtual] },
@@ -1374,6 +1396,7 @@ export default function App() {
     },
     [settings.configured, showToast],
   );
+  planRequestRef.current = requestPlan;
   const [probeBusy, setProbeBusy] = useState(false);
   /** Which skeleton the probe shows while a generation call runs (README §9). */
   const [probePhase, setProbePhase] = useState<"first" | "deeper" | "refine" | null>(null);
@@ -1590,6 +1613,7 @@ export default function App() {
   const confirmBoardPlan = useCallback(() => {
     const b = boardRef.current;
     if (!b?.plan || locked()) return;
+    beginAfterMap.current = typeof b.plan.goal === "object";
     const next = { ...b, plan: confirmPlan(b.plan) };
     edit(() => next);
     generateMap(next, planFirstLevelPrompt(next));
@@ -1747,8 +1771,7 @@ export default function App() {
     }
     // A new question starts the guided kickoff (or leads to AI settings) instead of a silent map.
     if (kickoff) {
-      if (settings.configured) startProbe();
-      else startKickoff();
+      startKickoff();
     }
   }
   async function importBoardFile(file: File) {
@@ -1868,6 +1891,8 @@ export default function App() {
       const n = boardRef.current?.nodes.find((x) => x.id === id);
       if (!n) return null;
       if (kind === "test") {
+        if (n.weight === "core" && choice !== null && n.meta?.check?.answer !== undefined)
+          return { pass: choice === n.meta.check.answer, missing: choice === n.meta.check.answer ? "" : "选项不对" };
         const local = localMark(n, choice, answer.split("理由：").at(-1) ?? "");
         if (local) return local;
       }
@@ -1883,6 +1908,55 @@ export default function App() {
     },
     [],
   );
+  const assessStop = useCallback(async (id: string) => {
+    const initial = boardRef.current;
+    if (!initial || !structuredGoal(initial) || !routeOf(initial).some(n => n.id === id)) return;
+    const noteId = addNote({ kind: "node", id }, { cards: false });
+    if (!noteId) return;
+    try {
+      const raw = await askQuietRef.current("mark", assessmentPrompt(initial, id), `goal-gap-${id}`);
+      const assessment = parseAssessment(raw);
+      const current = boardRef.current;
+      if (current?.id !== initial.id || JSON.stringify(current.plan?.goal) !== JSON.stringify(initial.plan?.goal)) return;
+      if (!assessment) { showToast("产出物暂时没评估出来，稍后可在对话里继续。"); return; }
+      const message = gapMessage(current, id, assessment);
+      if (!message) return;
+      edit(b => ({
+        ...b,
+        plan: b.plan ? { ...b.plan, artifact: message.meta!.artifact!.parts } : b.plan,
+        notes: b.notes.map(n => n.id === noteId ? { ...n, messages: cacheMessages([...expireProposals(n.messages), { id: uid(), role: "assistant", createdAt: now(), ...message }]) } : n),
+      }));
+    } catch { showToast("产出物暂时没评估出来，稍后可在对话里继续。"); }
+  }, [addNote, edit, showToast]);
+  readCardRef.current = (id) => {
+    const card = boardRef.current?.nodes.find(n => n.id === id);
+    if (!card || card.status === "explained") return;
+    // Reading is recorded separately from demonstrated mastery.
+    patchNode(id, { status: "exploring", beat: "done" });
+    void assessStop(id);
+  };
+  weightAnswerRef.current = async (id, answer, choice) => {
+    const initial = boardRef.current;
+    const card = initial?.nodes.find(n => n.id === id);
+    if (!card || !initial) return;
+    const noteId = addNote({ kind: "node", id }, { cards: false });
+    const mark = await markCard(id, card.weight === "hard" ? "explain" : "test", answer, choice);
+    if (boardRef.current?.id !== initial.id || !noteId) return;
+    const current = boardRef.current.nodes.find(n => n.id === id);
+    if (!current || current.body !== card.body || current.weight !== card.weight) return;
+    edit(b => ({
+      ...b,
+      nodes: b.nodes.map(n => n.id === id ? { ...n,
+        ...(mark?.pass ? { status: "explained" as const, beat: "done" as const, seal: "test" as const, fails: 0 } : mark ? { ...upgradeCard(n), fails: Math.min(99, (n.fails ?? 0) + 1) } : {}),
+        explain: answer,
+      } : n),
+      notes: b.notes.map(n => n.id === noteId ? { ...n, messages: cacheMessages([...n.messages,
+        { id: uid(), role: "user", text: answer, createdAt: now(), meta: { chat: true } },
+        { id: uid(), role: "assistant", text: mark ? mark.pass ? "讲清楚了。" : `再想想：${mark.missing || "结合卡片里的依据说说为什么。"}` : "这次没判出来，稍后再提交一次。", createdAt: now(), meta: { chat: true } },
+      ]) } : n),
+    }));
+    if (mark?.pass) void assessStop(id);
+  };
   const [stuckBusy, setStuckBusy] = useState<{ id: string; kind: "split" | "analogy" } | null>(null);
   /** 往下拆: one gated expansion into exactly two smaller children under the stuck card. */
   const splitStuck = useCallback(
@@ -2054,6 +2128,13 @@ export default function App() {
     if (!next.card.beat && next.card.status !== "explained") patchNode(id, { beat: "guess" });
     setSelection({ kind: "node", id });
     addNote({ kind: "node", id }, { cards: false });
+  };
+  startFirstRef.current = () => {
+    const first = boardRef.current && routeOf(boardRef.current)[0];
+    if (first) {
+      patchNode(first.id, { status: "exploring", beat: first.weight === "background" ? "learn" : first.weight === "core" ? "test" : "explain" });
+      addNote({ kind: "node", id: first.id }, { cards: false });
+    }
   };
   /** Set one chat message's proposal state (no undo entry: the route edit carries that). */
   const setProposal = (noteId: string, messageId: string, patch: Partial<ChatProposal>) =>
@@ -2662,6 +2743,10 @@ export default function App() {
             : undefined,
         data: {
           concept: n,
+          ...(n.parentId !== null && n.weight && board.kind === "ai" ? { weightActions: {
+            onRead: () => readCardRef.current(n.id),
+            onAnswer: (answer: string, choice: number | null) => weightAnswerRef.current(n.id, answer, choice),
+          } } : {}),
           multi: picked.length >= 2,
           noteOpen: drawerAnchor === n.id,
           no: numbers.get(n.id),
@@ -3338,6 +3423,11 @@ export default function App() {
             onCancel: (id) => proposalActRef.current(drawerNote.id, id, "cancel"),
             onStart: (id) => proposalActRef.current(drawerNote.id, id, "start"),
             onSave: (id) => saveChatAnswer(drawerNote.id, id),
+            onReply: (text) => { askNote(drawerNote.id, text); },
+            onBegin: confirmBoardPlan,
+            onboarding: !board.route?.length && needsKickoff(board),
+            planning: planBusy,
+            starting: mapBusy,
           }}
           onPromote={(text) =>
             setPromote({ noteId: drawerNote.id, title: "新的发现", text })
@@ -3374,16 +3464,21 @@ export default function App() {
             if (!card || card.parentId === null || board.kind !== "ai" || !board.route?.length) return undefined;
             return {
               station: stationOf(board, card.id),
+              weightActions: {
+                onRead: () => readCardRef.current(card.id),
+                onAnswer: (answer: string, choice: number | null) => weightAnswerRef.current(card.id, answer, choice),
+              },
               onPatch: (patch: Partial<ConceptNode>) => {
                 if (patch.seal === "test") {
                   edit((b) => afterChildSealed({ ...b, nodes: b.nodes.map((x) => (x.id === card.id ? { ...x, ...patch } : x)) }, card.id));
+                  void assessStop(card.id);
                   return;
                 }
-                patchNode(card.id, patch);
+                patchNode(card.id, patch.fails && patch.fails > (card.fails ?? 0) ? { ...patch, ...upgradeCard(card) } : patch);
               },
               onRecheckFail: () => {
                 edit((b) => failRecheck(b, card.id, nextId ?? undefined));
-                showToast("去掉了浅印：这一站排在下一步之后，再走一遍 4 拍。");
+                showToast("这一站排在下一步之后，再学一遍。");
               },
               stuck: isStuck(card) ? (
                 <StuckExits
@@ -3540,7 +3635,7 @@ export default function App() {
             </button>
             <span className="eyebrow">一张新地图</span>
             <h2 id="new-title">什么，让你好奇？</h2>
-            <p>写下一个问题。接下来我们把它排成一条路线，每站走 4 拍：猜 · 学 · 讲 · 测——你始终知道下一步做什么。</p>
+            <p>写下一个问题。我们先问你几句，再把它排成一条路线——每一站都帮你把成品做出一块。</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();

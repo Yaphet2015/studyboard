@@ -1,3 +1,5 @@
+import { CardSourceLine } from "./CardSourceLine";
+import { WeightFooter, type WeightActions } from "./WeightFooter";
 import { AgentEditProse, AgentEdits } from "./AgentEditProse";
 import { Menu } from "./Drawer";
 import {
@@ -38,6 +40,7 @@ import { tip } from "./Tooltip";
 export type CardData = {
   [key: string]: unknown;
   concept: ConceptNode;
+  weightActions?: WeightActions;
   /** Hierarchical "§1.2" index shown top-right. */
   no?: string;
   topic?: string;
@@ -505,11 +508,12 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
       {data.generating && <BorderBeam />}
       {data.noteOpen && <NoteTab />}
       <Ports linkMode={data.linkMode} />
-      {n.status === "explained" && <Seal light={n.seal === "probe"} />}
+      {n.status === "explained" && data.station === undefined && <Seal light={n.seal === "probe"} />}
       {data.preview === "replace" && <span className="pv-tag">待替换</span>}
       {data.station !== undefined && data.preview !== "remove" && (
         <span className={`station ${data.isNext ? "next" : ""} ${n.status === "explained" ? "sealed" : ""}`} aria-label={`第 ${data.station} 站`}>
-          {data.station}
+          {n.status !== "unseen" && <i className={`station-dot ${n.status === "explained" ? "mastered" : "read"}`} aria-label={n.status === "explained" ? "掌握" : "读过"} />}
+          <span>第 {data.station} 站</span>
         </span>
       )}
       {data.isNext && <span className="next-tag">下一步</span>}
@@ -518,8 +522,10 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
         {data.no && <span className="no">{data.no}</span>}
       </div>
       {/* Compact face: the first sentence or two of the prose; the drawer shows all of it. */}
-      {(n.body || edits.get(n.id)?.after === n.body) && <AgentEditProse body={n.body} cardId={n.id} className="face-body" project={faceText} />}
-      {data.isNext && data.onStartNext && (
+      {(n.body || edits.get(n.id)?.after === n.body) && <AgentEditProse body={n.body} cardId={n.id} className="face-body" project={n.weight ? undefined : faceText} />}
+      <CardSourceLine card={n} />
+      {data.weightActions && <WeightFooter card={n} actions={data.weightActions} />}
+      {!data.weightActions && data.isNext && data.onStartNext && (
         <button
           className="btn primary start-stop nodrag nopan"
           onClick={(e) => {
@@ -530,7 +536,7 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
           {n.beat ? "继续这一站" : "开始这一站"}
         </button>
       )}
-      {data.station !== undefined && n.status !== "explained" && (n.beat || data.isNext) && (
+      {!data.weightActions && data.station !== undefined && n.status !== "explained" && (n.beat || data.isNext) && (
         <span className="beat-line" aria-hidden="true">
           <i style={{ width: `${beatProgress(n) * 100}%` }} />
         </span>
@@ -629,7 +635,7 @@ export function RootCard({ data, selected }: NodeProps<CardNode>) {
             {data.kickoffStarted ? "继续：AI 带我开始" : "让 AI 带我开始"}
           </button>
           <span className="lab">
-            AI 先问你知道些什么，再提出第一层子问题，由你决定放上画布。
+            AI 先问清你想做出什么，再排好路线，由你开始第一站。
           </span>
         </div>
       )}

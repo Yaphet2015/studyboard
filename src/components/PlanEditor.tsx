@@ -1,3 +1,4 @@
+import { goalText } from "../model/goal";
 import { useState } from "react";
 import { Check, LoaderCircle, RotateCcw, Trash2 } from "lucide-react";
 import type { BoardPlan } from "../shared/types";
@@ -83,7 +84,7 @@ export function PlanEditor({
   return (
     <section className="plan-editor" aria-label="学习计划" data-intent={plan.intent}>
       <div className="plan-head">
-        <span className="plan-goal">{plan.goal}</span>
+        <span className="plan-goal">{goalText(plan.goal)}</span>
       </div>
       {plan.learner && <div className="plan-learner">{plan.learner}</div>}
       <ol className="plan-blocks">

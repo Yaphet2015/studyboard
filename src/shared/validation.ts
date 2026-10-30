@@ -65,8 +65,27 @@ const sourceUrl = z
 export const cardSourceSchema = z
   .object({ title: plainText(120), url: sourceUrl.optional() })
   .strict();
+export const cardWeightSchema = z.enum(["background", "core", "hard"]);
+const cardCheckSchema = z.object({ q: z.string().max(400), options: z.array(z.string().max(120)).max(5).optional() }).strict();
+export const planGoalSchema = z.object({
+  deliverable: nonemptyText(200),
+  criteria: z.array(z.object({
+    id: idSchema, label: nonemptyText(200), target: z.number().finite().optional(),
+    direction: z.enum(["atLeast", "atMost"]).optional(), unit: z.string().max(40).optional(),
+  }).strict()).max(8).default([]),
+  constraints: z.array(z.string().max(200)).max(8).default([]),
+  experience: z.string().max(1000).default(""),
+}).strict();
+export const planGoalValueSchema = z.union([z.string().max(400), planGoalSchema]);
+export const artifactPartSchema = z.object({ stopId: idSchema, title: z.string().max(200), content: z.string().max(2000) }).strict();
+const sourceDateSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?$/);
 /** Rich card fields, shared by stored cards and AI output. */
 export const richCardFields = {
+  source: plainText(200).optional(),
+  date: sourceDateSchema.optional(),
+  weight: cardWeightSchema.default("background").optional(),
+  questionPrompt: plainText(400).optional(),
+  upgradeCheck: cardCheckSchema.optional(),
   summary: plainText(160).optional(),
   keyPoints: z.array(plainText(160)).max(4).optional(),
   whyItMatters: plainText(300).optional(),
@@ -91,6 +110,11 @@ const aiText = (max: number) => z.preprocess(defang, plainText(max));
  * instead of failing the whole map (plain-text checks still apply, so nothing unsafe is kept).
  */
 const aiRichCardFields = {
+  source: richCardFields.source.catch(undefined),
+  date: richCardFields.date.catch(undefined),
+  weight: cardWeightSchema.default("background").optional(),
+  questionPrompt: richCardFields.questionPrompt.catch(undefined),
+  upgradeCheck: cardCheckSchema.optional().catch(undefined),
   summary: aiText(160).optional().catch(undefined),
   keyPoints: z
     .preprocess(
@@ -386,6 +410,9 @@ export const chatMessageSchema = z
         chat: z.boolean().optional(),
         proposal: chatProposalSchema.optional(),
         savedNote: idSchema.optional(),
+        chips: z.array(z.string().max(160)).max(5).optional(),
+        goalSummary: planGoalSchema.optional(),
+        artifact: z.object({ parts: z.array(artifactPartSchema).max(16), added: idSchema.optional() }).strict().optional(),
       })
       .strict()
       .optional(),
@@ -463,10 +490,11 @@ export const boardPlanSchema = z
   .object({
     status: z.enum(["draft", "confirmed"]),
     intent: planIntentSchema,
-    goal: z.string().max(400),
+    goal: planGoalValueSchema,
     learner: z.string().max(400),
     blocks: z.array(planBlockSchema).max(16),
     outOfScope: z.array(z.string().max(80)).max(8),
+    artifact: z.array(artifactPartSchema).max(16).default([]).optional(),
   })
   .strict();
 export const boardSchema = z
