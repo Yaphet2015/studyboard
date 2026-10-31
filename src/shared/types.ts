@@ -55,6 +55,13 @@ export interface ConceptNode {
   misconception?: string;
   depthType?: DepthType;
   sources?: CardSource[];
+  source?: string;
+  date?: string;
+  weight?: CardWeight;
+  /** Natural prediction/explanation prompt for a hard card. */
+  questionPrompt?: string;
+  /** Prepared choice question, including on background cards for a later upgrade. */
+  upgradeCheck?: CardCheck;
   /** The 测 question: learner-visible text only (q and choice options). */
   check?: CardCheck;
   /** Where the learner is in this stop's four beats (先猜 → 学 → 讲 → 测). */
@@ -71,6 +78,7 @@ export interface ConceptNode {
   /** Internal data, never rendered or exported. */
   meta?: CardMeta;
 }
+export type CardWeight = "background" | "core" | "hard";
 export type Beat = "guess" | "learn" | "explain" | "test" | "done";
 export interface CardCheck {
   q: string;
@@ -138,6 +146,9 @@ export interface ChatMessage {
     proposal?: ChatProposal;
     /** The 批注卡 this answer was saved into. */
     savedNote?: string;
+    chips?: string[];
+    goalSummary?: PlanGoal;
+    artifact?: { parts: ArtifactPart[]; added?: string };
   };
 }
 /** Route edits a chat answer can propose; stops are 1-based station numbers. */
@@ -316,16 +327,44 @@ export interface PlanBlock {
   /** Required by the question itself, whoever asks; the learner profile cannot drop it. */
   core: boolean;
 }
+export interface GoalCriterion {
+  id: string;
+  label: string;
+  target?: number;
+  direction?: "atLeast" | "atMost";
+  unit?: string;
+}
+export interface PlanGoal {
+  deliverable: string;
+  criteria: GoalCriterion[];
+  constraints: string[];
+  experience: string;
+}
+export interface GoalResult {
+  id: string;
+  current?: number;
+  met?: boolean;
+  /** measured: user-provided or checkable source; estimated: model inference. */
+  basis: "measured" | "estimated";
+  evidence: string;
+}
+export interface ArtifactPart {
+  stopId: string;
+  title: string;
+  content: string;
+  results?: GoalResult[];
+}
 export interface BoardPlan {
   /** draft: waiting for the learner to review it; confirmed: drives generation. */
   status: "draft" | "confirmed";
   intent: PlanIntent;
   /** Testable: "学完后，能……". */
-  goal: string;
+  goal: string | PlanGoal;
   /** A short learner profile from the kickoff (or "按初学者处理"). */
   learner: string;
   blocks: PlanBlock[];
   outOfScope: string[];
+  artifact?: ArtifactPart[];
 }
 export interface BoardSummary {
   /** Unknown on legacy saves until loaded or saved. */

@@ -5538,3 +5538,42 @@ h2.workspace-section span {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card-list-prose { margin: 0; white-space: pre-wrap; }
+
+/* Goal-driven cards reuse the existing paper, ink, accent and rule palette. */
+.srcl a { color: inherit; text-underline-offset: 2px; }
+.srcl { font-size: 11px; color: var(--ink-3); margin-top: 8px; }
+.card:has(.weight-footer) .face-body { display: block; overflow: visible; }
+.weight-footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rule); font-size: 13px; }
+.weight-footer.background { border: 0; padding: 0; text-align: right; }
+.weight-footer.upgraded { animation: footer-in 240ms ease; }
+@keyframes footer-in { from { opacity: 0; } to { opacity: 1; } }
+.weight-question { margin: 0 0 8px; font-weight: 600; }
+.weight-options, .answer-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.weight-options .btn, .answer-chips .btn { height: auto; white-space: normal; text-align: left; }
+.weight-footer form { display: flex; gap: 6px; }
+.weight-footer input { min-width: 0; width: 100%; border: 1px solid var(--rule); border-radius: 12px; padding: 7px 10px; color: var(--ink); background: transparent; font: inherit; }
+.card .station { position: static; display: flex; justify-content: flex-start; gap: 6px; width: auto; height: auto; background: transparent; border: 0; margin-bottom: 7px; font-weight: 400; color: var(--ink-3); }
+.card .station.next, .card .station.sealed { background: transparent; color: var(--ink-3); border: 0; }
+.station-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; border: 1.5px solid var(--accent); }
+.station-dot.mastered { background: var(--accent); }
+.goal-pin { flex-shrink: 0; font-size: 12px; color: var(--ink-3); padding: 8px 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goal-pin b { color: var(--ink); font-weight: 600; }
+.goal-pin.sweep { animation: goal-sweep 600ms ease; background-size: 200% 100%; background-image: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--accent) 15%, transparent) 50%, transparent 80%); }
+@keyframes goal-sweep { from { background-position: 200% 0; } to { background-position: -100% 0; } }
+.goal-summary p { color: var(--ink-3); margin: 5px 0 0; }
+.artifact-attachment { border: 1px solid var(--rule); border-radius: 8px; margin-top: 10px; font-size: 12.5px; }
+.artifact-attachment summary { cursor: pointer; padding: 7px 10px; color: var(--ink-3); }
+.artifact-attachment table { width: calc(100% - 20px); margin: 0 10px 8px; border-collapse: collapse; }
+.artifact-attachment td { padding: 5px 0; border-top: 1px solid var(--rule); vertical-align: top; }
+.artifact-attachment td:last-child { text-align: right; white-space: nowrap; }
+.artifact-attachment td p { margin: 3px 0 0; color: var(--ink-3); }
+.artifact-attachment .pending { color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) { .weight-footer.upgraded, .goal-pin.sweep { animation: none; } }
+.card:has(.weight-footer) { background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow-1); padding-bottom: 12px; }
+.card:has(.weight-footer).is-selected, .react-flow__node:has(.station.next) .card:has(.weight-footer) { border-color: var(--accent); }
+.card:has(.weight-footer)::after { display: none; }
+.card:has(.weight-footer) h3 { color: var(--ink); font-weight: 700; }
+.card:has(.weight-footer) .card-heading { padding-right: 0; }
+.card:has(.weight-footer) .no { display: inline; }
+.card:has(.weight-footer) p { color: var(--ink-2); }
+.card .weight-question { display: block; font-size: 13px; color: var(--ink); }

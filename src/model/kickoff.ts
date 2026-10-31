@@ -60,7 +60,7 @@ export const KICKOFF_MESSAGE = "我想从这里开始学，带我起步吧。";
 export function kickoffPrompt(topic: string): string {
   return `${KICKOFF_MESSAGE}
 我的起点问题是：「${topic}」。
-请先别讲解。用 1–2 个简短、具体的问题问我对它已经知道些什么、想弄懂到什么程度；再用一句话说明这个主题包含哪几个同层的核心概念，以及建议从左到右怎样学。知识层级按整体到细节划分，不按问答先后划分。`;
+请先别讲解。通过 3–5 题逐一问清想拿到的产出物、成功标准、约束（预算与期限）、真实经历和已经知道些什么；每次只问一题，可提供 chips。收齐后把答案写进 goal，返回 ready:true，再按产出物的组成排路线。知识层级按整体到细节划分，不按问答先后划分。`;
 }
 
 /** What the learner said in the kickoff conversation (their own replies, not the kickoff line). */
@@ -69,7 +69,7 @@ export function learnerAnswers(note: StickyNote | undefined): string[] {
     .filter((m) => m.role === "user" && !m.text.startsWith(KICKOFF_MESSAGE))
     .map((m) => m.text.trim())
     .filter(Boolean)
-    .slice(-3);
+    .slice(-6);
 }
 
 /**

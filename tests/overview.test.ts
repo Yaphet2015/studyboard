@@ -39,7 +39,7 @@ function tree(depth = 3): Board {
 describe("zoom overview cache", () => {
   it("reads old boards and uses local text immediately", () => {
     const board = tree();
-    expect(boardSchema.parse(board)).toEqual(board);
+    expect(boardSchema.parse(board)).toEqual({ ...board, nodes: board.nodes.map(n => ({ ...n, weight: n.weight ?? "background" })) });
     expect(overviewSummary(board, "root-0")).toBe("这是root-0的解释。");
     board.nodes.find((node) => node.id === "root-0")!.body = "";
     expect(overviewSummary(board, "root-0")).toContain("主题root-0-0");

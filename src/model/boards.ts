@@ -239,6 +239,11 @@ const normalize = (text: string) =>
 /** The optional rich fields of an AI node, copied only when present. */
 function richFields(item: Partial<ConceptNode>): Partial<ConceptNode> {
   const out: Partial<ConceptNode> = {};
+  if (item.source) out.source = item.source;
+  if (item.date) out.date = item.date;
+  if (item.weight) out.weight = item.weight;
+  if (item.questionPrompt) out.questionPrompt = item.questionPrompt;
+  if (item.upgradeCheck) out.upgradeCheck = structuredClone(item.upgradeCheck);
   if (item.summary) out.summary = item.summary;
   if (item.keyPoints?.length) out.keyPoints = [...item.keyPoints];
   if (item.whyItMatters) out.whyItMatters = item.whyItMatters;

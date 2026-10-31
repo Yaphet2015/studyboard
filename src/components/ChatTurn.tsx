@@ -1,5 +1,7 @@
 // One assistant turn of the post-probe chat: a plain answer, then at most one proposal —
 // an inline route diff (应用 / 取消, then 撤销) or a single 开始第 N 站 button.
+import { useEffect, useState } from "react";
+import { GoalSummary } from "./GoalSummary";
 import { Copy, NotebookPen, Undo2 } from "lucide-react";
 import type { Board, ChatMessage } from "../shared/types";
 import { previewRoute, routeOf } from "../model/route";
@@ -14,6 +16,11 @@ export interface ChatActions {
   onCancel: (messageId: string) => void;
   onStart: (messageId: string) => void;
   onSave: (messageId: string) => void;
+  onReply?: (text: string) => void;
+  onBegin?: () => void;
+  onboarding?: boolean;
+  planning?: boolean;
+  starting?: boolean;
 }
 
 export function ChatTurn({ message, chat, busy, onCopy }: { message: ChatMessage; chat: ChatActions; busy: boolean; onCopy: () => void }) {
@@ -21,6 +28,11 @@ export function ChatTurn({ message, chat, busy, onCopy }: { message: ChatMessage
   return (
     <>
       <AnswerBlocks text={message.text} />
+      {!!message.meta?.chips?.length && <div className="answer-chips">{message.meta.chips.map(chip => <button className="btn sm" key={chip} disabled={busy} onClick={() => chat.onReply?.(chip)}>{chip}</button>)}</div>}
+      {message.meta?.goalSummary && <>
+        <GoalSummary goal={message.meta.goalSummary} />
+        {!chat.board.route?.length && chat.onBegin && <div className="acts"><button className="btn primary chat-start" disabled={busy || chat.planning || chat.starting || !chat.board.plan} onClick={chat.onBegin}>{chat.planning ? "正在排路线…" : chat.starting ? "正在开始…" : "开始第 1 站"}</button></div>}
+      </>}
       {p?.type === "editRoute" && <RouteDiff message={message} chat={chat} />}
       {p?.type === "reExpand" && <ReExpandDiff message={message} chat={chat} />}
       {p?.type === "startStop" && (() => {
@@ -35,7 +47,8 @@ export function ChatTurn({ message, chat, busy, onCopy }: { message: ChatMessage
           </button>
         );
       })()}
-      {!p && !busy && (
+      {message.meta?.artifact && <ArtifactAttachment message={message} board={chat.board} />}
+      {!p && !busy && !message.meta?.goalSummary && !message.meta?.chips?.length && !message.meta?.artifact && !chat.onboarding && (
         <div className="acts chat-acts">
           {message.meta?.savedNote ? (
             <span className="chat-saved">已存成批注卡</span>
@@ -133,7 +146,10 @@ function RouteDiff({ message, chat }: { message: ChatMessage; chat: ChatActions 
               <span className="rd-new">{r.to} · {r.title}<span className="rd-note">↑↓ 从第 {r.from} 站移来</span></span>
             )}
             {r.kind === "focus" && (
-              <span className="rd-new">{r.to} · {r.title}<span className="rd-note">重点：{r.focus}</span></span>
+              <>
+                <span className="rd-new">{r.to} · {r.title}</span>
+                <span className="rd-note">重点：{r.focus}</span>
+              </>
             )}
           </li>
         ))}
@@ -160,4 +176,20 @@ function RouteDiff({ message, chat }: { message: ChatMessage; chat: ChatActions 
       </div>
     </div>
   );
+}
+
+function ArtifactAttachment({ message, board }: { message: ChatMessage; board: Board }) {
+  const artifact = message.meta!.artifact!;
+  const messages = board.notes.flatMap(n => n.messages).filter(m => m.meta?.artifact).sort((a,b) => a.createdAt.localeCompare(b.createdAt));
+  const latest = messages.at(-1)?.id === message.id;
+  const [open, setOpen] = useState(latest && !!artifact.added);
+  useEffect(() => { if (!latest) setOpen(false); }, [latest]);
+  const stops = routeOf(board);
+  return <details className="artifact-attachment" open={open} onToggle={e => setOpen(e.currentTarget.open)}>
+    <summary>我的产出物 · {artifact.parts.length}/{stops.length} 块</summary>
+    <table><tbody>{stops.map((s,i) => {
+      const part = artifact.parts.find(p => p.stopId === s.id);
+      return <tr key={s.id} className={part ? "" : "pending"}><td>{i + 1} · {part?.title || s.title}{part && <p>{part.content}</p>}</td><td>{part ? artifact.added === s.id ? "刚填入" : "已填" : `第 ${i + 1} 站`}</td></tr>;
+    })}</tbody></table>
+  </details>;
 }

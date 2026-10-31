@@ -5,6 +5,7 @@ import {
   dialog,
   Menu,
   safeStorage,
+  shell,
 } from "electron";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -22,6 +23,7 @@ import {
   TRANSFER_BYTES,
 } from "../src/shared/transfer.js";
 import { migrateLegacyUserData } from "./legacy-data.js";
+import { isHttpsUrl } from "../src/shared/card-source.js";
 import { installSystemFetch } from "./system-fetch.js";
 import { AIRuntime, smokeDurableStorage } from "./ai-runtime.js";
 import { z } from "zod";
@@ -449,7 +451,10 @@ async function bootstrap(): Promise<void> {
           requestClose();
         }
       });
-      window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      window.webContents.setWindowOpenHandler(({ url }) => {
+        if (isHttpsUrl(url)) void shell.openExternal(url).catch(() => {});
+        return { action: "deny" };
+      });
       window.webContents.on("will-navigate", (event, url) => {
         if (
           developmentURL

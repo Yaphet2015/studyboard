@@ -25,6 +25,8 @@ describe("per-mode sampling", () => {
   it("gives reasoning models room for reasoning plus the answer", () => {
     for (const m of [
       "deepseek-flash",
+      "deepseek/deepseek-v4.1-flash",
+      "deepseek/deepseek-v4-flash",
       "deepseek-reasoner",
       "o3-mini",
       "qwq-32b",

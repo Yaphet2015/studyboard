@@ -1,3 +1,5 @@
+import { WeightFooter, type WeightActions } from "./WeightFooter";
+import { CardSourceLine } from "./CardSourceLine";
 import { AgentEditProse } from "./AgentEditProse";
 import { useState } from "react";
 import { Check } from "lucide-react";
@@ -7,6 +9,7 @@ import { UNSURE, type Mark } from "../model/mark";
 
 export interface StudyProps {
   station?: number;
+  weightActions?: WeightActions;
   /** Save the learner's progress on this card (beat, guess, explain…). */
   onPatch: (patch: Partial<ConceptNode>) => void;
   /** Mark a 讲 or 测 answer; null when marking failed (AI unavailable). */
@@ -83,11 +86,12 @@ export function StopBeats({ card, study }: { card: ConceptNode; study: StudyProp
     setFeedback({ ok: false, text: fails >= 2 ? "没关系，这说明这里藏着更小的概念。" : `还没对：${mark.missing || "再想想"}。再试一次？` });
     study.onPatch({ fails });
   };
+  if (card.weight && study.weightActions) return <section className="stop" aria-label="这一站"><CardProse body={card.body} cardId={card.id} /><CardSourceLine card={card} /><WeightFooter card={card} actions={study.weightActions} /></section>;
   const current = BEATS.indexOf(beat);
   const options = card.check?.options;
   return (
     <section className="stop" aria-label="这一站">
-      <ol className="beats" aria-label="节拍">
+      <ol className="beats" aria-label="学习进度">
         {BEATS.map((b, i) => (
           <li
             key={b}
@@ -102,7 +106,7 @@ export function StopBeats({ card, study }: { card: ConceptNode; study: StudyProp
       {beat !== "guess" && <CardProse body={card.body} cardId={card.id} />}
       {beat === "guess" && (
         <div className="beat-pane">
-          <span className="lab">第 1 拍 · 先猜一猜</span>
+          <span className="lab">先猜一猜</span>
           <p className="beat-q">读之前先猜：「{card.title}」——你觉得为什么会这样？</p>
           <textarea
             className="beat-input"
@@ -144,7 +148,7 @@ export function StopBeats({ card, study }: { card: ConceptNode; study: StudyProp
       )}
       {beat === "explain" && (
         <div className="beat-pane">
-          <span className="lab">第 3 拍 · 用你的话讲</span>
+          <span className="lab">用你的话讲</span>
           <textarea
             className="beat-input"
             aria-label="用我的话讲"
@@ -175,7 +179,7 @@ export function StopBeats({ card, study }: { card: ConceptNode; study: StudyProp
       )}
       {beat === "test" && (
         <div className="beat-pane">
-          <span className="lab">第 4 拍 · 检查题（新情境）</span>
+          <span className="lab">检查题（新情境）</span>
           <p className="beat-q">{card.check?.q ?? `换个情境：「${card.title}」在哪种情况下会不成立？说出理由。`}</p>
           {options?.length ? (
             <div className="beat-options" role="radiogroup" aria-label="选项">

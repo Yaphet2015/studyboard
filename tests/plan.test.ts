@@ -69,7 +69,7 @@ describe("learning plan", () => {
       }),
       board,
     );
-    expect(next.plan).toEqual(board.plan);
+    expect(next.plan).toEqual({ ...board.plan, artifact: [] });
     const [a, b, c] = next.nodes.slice(1);
     expect(a.planBlock).toBe("s1");
     expect(c.planBlock).toBeUndefined();

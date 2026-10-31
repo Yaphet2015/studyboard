@@ -1,7 +1,8 @@
+import { goalText } from "./goal";
 import { probeBrief } from "./probe";
 import { z } from "zod";
 import type { Board, BoardPlan, PlanBlock, PlanIntent } from "../shared/types";
-import { idSchema, planIntentSchema } from "../shared/validation";
+import { idSchema, planIntentSchema, planGoalValueSchema } from "../shared/validation";
 
 export const INTENT_LABEL: Record<PlanIntent, string> = {
   concept: "概念：是什么",
@@ -19,13 +20,13 @@ export function planPrompt(topic: string, answers: string[], learner = ""): stri
     : learner ? "学习者没有补充开场回答，参考下面的摸底结果和画像安排深度。" : "学习者跳过了开场提问，按初学者处理。";
   return `为这个起点问题拟定学习计划：「${topic}」。${known}
 ${learner}
-先拟计划，不要生成卡片。只输出计划 JSON。`;
+把产出物、成功标准、约束、真实经历完整写进 goal；每站完成产出物的一块，站内内容为该块服务。先拟计划，不要生成卡片。只输出计划 JSON。`;
 }
 
 const aiPlanSchema = z
   .object({
     intent: planIntentSchema,
-    goal: z.string().min(1).max(400),
+    goal: planGoalValueSchema,
     learner: z.string().max(400).catch(""),
     blocks: z
       .array(
@@ -87,7 +88,7 @@ export function parsePlan(text: string): BoardPlan {
   return {
     status: "draft",
     intent: p.intent,
-    goal: p.goal.trim(),
+    goal: typeof p.goal === "string" ? p.goal.trim() : p.goal,
     learner: p.learner.trim(),
     blocks: clean,
     outOfScope: (p.outOfScope ?? []).map((s) => s.trim()).filter(Boolean),
@@ -149,7 +150,7 @@ export function renderPlan(board: Board, anchorId: string | null): string | unde
   const ownOpen = own.filter((b) => !covered.has(b.id));
   return [
     `问题类型：${INTENT_LABEL[plan.intent]}`,
-    `学习目标：${plan.goal}`,
+    `学习目标：${goalText(plan.goal)}`,
     `学习者：${plan.learner || "按初学者处理"}`,
     "骨架（[块id]，✓ 表示画布上已有卡片实现了这个块）：",
     ...lines,

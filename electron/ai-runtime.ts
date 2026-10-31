@@ -375,7 +375,7 @@ function buildProvider(baseUrl: string, model: string): Provider {
   // a small cap can end the request before any answer is produced.
   // https://api-docs.deepseek.com/quick_start/pricing/
   const deepSeekV4 =
-    model === "deepseek-flash" || model.startsWith("deepseek-v4-");
+    /(^|\/)deepseek-(flash|v4[.-])/i.test(model);
   // pi-ai's supported custom provider API explicitly selects Chat Completions for compatible endpoints.
   return createProvider({
     id: "openai",

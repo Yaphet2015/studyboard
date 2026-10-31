@@ -150,7 +150,7 @@ describe("message meta", () => {
   const at = "2026-10-18T10:00:00.000Z";
   it("boards saved before message meta existed still validate", () => {
     const board = fixture().board;
-    expect(boardSchema.parse(board)).toEqual(board);
+    expect(boardSchema.parse(board)).toEqual({ ...board, nodes: board.nodes.map(n => ({ ...n, weight: n.weight ?? "background" })) });
     board.notes[0].messages = [
       {
         id: "m1",
@@ -161,7 +161,7 @@ describe("message meta", () => {
       },
     ];
     board.notes[0].excludedRefs = ["concept-dom"];
-    expect(boardSchema.parse(board)).toEqual(board);
+    expect(boardSchema.parse(board)).toEqual({ ...board, nodes: board.nodes.map(n => ({ ...n, weight: n.weight ?? "background" })) });
   });
 
   it("carries ticked steps over when durable history replaces the cache", () => {
@@ -234,7 +234,7 @@ describe("layOutline", () => {
       status: "unseen",
     });
     expect(next.notes[0].messages[0].meta).toEqual({ laid: true });
-    expect(boardSchema.parse(next)).toEqual(next);
+    expect(boardSchema.parse(next)).toEqual({ ...next, nodes: next.nodes.map(n => ({ ...n, weight: n.weight ?? "background" })) });
     // The original board is untouched, so undo is just the previous board.
     expect(board.nodes).toHaveLength(next.nodes.length - 2);
   });
