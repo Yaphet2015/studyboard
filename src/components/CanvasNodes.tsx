@@ -488,6 +488,9 @@ export function faceText(body: string): string {
 
 export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
   const n = data.concept;
+  // Weighted AI cards (weightActions) only count core/hard answers as mastery; manual boards keep
+  // the learner's own 「我能解释」 mark as the seal.
+  const mastered = data.weightActions ? cardMastered(n) : n.status === "explained";
   const edits = useContext(AgentEdits);
   // Stamp only when the status changes while mounted, not on first paint.
   const first = useRef(n.status);
@@ -509,11 +512,11 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
       {data.generating && <BorderBeam />}
       {data.noteOpen && <NoteTab />}
       <Ports linkMode={data.linkMode} />
-      {cardMastered(n) && data.station === undefined && <Seal light={n.seal === "probe"} />}
+      {mastered && (!data.weightActions || data.station === undefined) && <Seal light={n.seal === "probe"} />}
       {data.preview === "replace" && <span className="pv-tag">待替换</span>}
       {data.station !== undefined && data.preview !== "remove" && (
-        <span className={`station ${data.isNext ? "next" : ""} ${cardMastered(n) ? "sealed" : ""}`} aria-label={`第 ${data.station} 站`}>
-          {n.status !== "unseen" && <i className={`station-dot ${cardMastered(n) ? "mastered" : "read"}`} aria-label={cardMastered(n) ? "掌握" : "读过"} />}
+        <span className={`station ${data.isNext ? "next" : ""} ${mastered ? "sealed" : ""}`} aria-label={`第 ${data.station} 站`}>
+          {n.status !== "unseen" && <i className={`station-dot ${mastered ? "mastered" : "read"}`} aria-label={mastered ? "掌握" : "读过"} />}
           <span>第 {data.station} 站</span>
         </span>
       )}

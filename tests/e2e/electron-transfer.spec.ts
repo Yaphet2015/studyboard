@@ -132,7 +132,10 @@ test("desktop import restores SQLite histories; native exports and reopening pre
       }),
       [imported!.id, board.notes[0].id],
     );
-    expect(restored.board!.nodes).toEqual(board.nodes);
+    // Restored boards pass the schema, which fills the goal-weights default weight.
+    expect(restored.board!.nodes).toEqual(
+      board.nodes.map((n: any) => ({ ...n, weight: n.weight ?? "background" })),
+    );
     expect(restored.history.messages).toHaveLength(242);
     expect(restored.history.messages[0].text).toBe("桌面共享记录 0");
     expect(restored.history.running).toBe(false);

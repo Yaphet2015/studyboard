@@ -1,10 +1,12 @@
+import { mkdirSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
 import { installFakeAtlas } from "./fake-atlas";
 import { gotoApp, reloadApp } from "./ready";
 import { fixtureGoal, goalBoard } from "../goal-fixtures";
 import { createEmptyBoard } from "../../src/model/boards";
 
-const shots = "/workspace/studyboard-goal/v2/shots";
+// Review screenshots; CI has no /workspace, so default into test-results unless GOAL_SHOTS is set.
+const shots = process.env.GOAL_SHOTS ?? "test-results/goal-weights-shots";
 const card = (page: Page, id: string) =>
   page.locator(`.react-flow__node[data-id="${id}"]`);
 const disk = (page: Page) =>
@@ -28,6 +30,7 @@ async function screenshot(page: Page, name: string) {
   await page
     .locator("textarea")
     .evaluateAll((els) => els.forEach((el) => el.blur()));
+  mkdirSync(shots, { recursive: true });
   await page.screenshot({
     path: `${shots}/${name}.png`,
     animations: "disabled",

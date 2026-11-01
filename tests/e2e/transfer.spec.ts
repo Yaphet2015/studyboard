@@ -72,7 +72,10 @@ test("a shared file restores complete conversations as a new board, survives rel
     JSON.parse(localStorage.getItem("studyboard-preview-boards-v1")!).at(-1),
   );
   expect(imported.id).not.toBe(original.id);
-  expect(imported.nodes).toEqual(original.nodes);
+  // Import validates through the board schema, which fills the goal-weights default weight.
+  expect(imported.nodes).toEqual(
+    original.nodes.map((n: any) => ({ ...n, weight: n.weight ?? "background" })),
+  );
   expect(imported.notes[0].messages).toHaveLength(200);
   await reloadApp(page);
   await page
