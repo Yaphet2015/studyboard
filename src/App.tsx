@@ -1448,9 +1448,10 @@ export default function App() {
       let next: Board = { ...boardRef.current!, probe: state };
       if (next.route?.length) next = applyFrontier(next);
       edit(() => next);
-      if (!next.route?.length && !next.plan) requestPlan(next);
+      // New question: 摸底 first, then the goal questions (kickoff); the plan follows the kickoff's ready:true.
+      if (!next.route?.length && !next.plan) startKickoff();
     },
-    [edit, requestPlan],
+    [edit, startKickoff],
   );
   /** Run the machine until it needs an answer (ask) or is done; EXPAND / REFINE are generation calls. */
   const advanceProbe = useCallback(
@@ -1771,7 +1772,8 @@ export default function App() {
     }
     // A new question starts the guided kickoff (or leads to AI settings) instead of a silent map.
     if (kickoff) {
-      startKickoff();
+      if (settings.configured) startProbe();
+      else startKickoff();
     }
   }
   async function importBoardFile(file: File) {
@@ -2130,7 +2132,9 @@ export default function App() {
     addNote({ kind: "node", id }, { cards: false });
   };
   startFirstRef.current = () => {
-    const first = boardRef.current && routeOf(boardRef.current)[0];
+    // Stations the 摸底 already sealed are skipped: start at the first one above the learner's edge.
+    const route = boardRef.current ? routeOf(boardRef.current) : [];
+    const first = route.find((c) => !c.seal) ?? route[0];
     if (first) {
       patchNode(first.id, { status: "exploring", beat: first.weight === "background" ? "learn" : first.weight === "core" ? "test" : "explain" });
       addNote({ kind: "node", id: first.id }, { cards: false });
@@ -2590,7 +2594,7 @@ export default function App() {
     });
     api.ask(request).catch(() => requestMeta.current.delete(request.requestId));
   };
-  const kickoffReady = needsKickoff(board) && !board?.probe && !mapBusy && !study;
+  const kickoffReady = needsKickoff(board) && board?.probe?.status !== "asking" && !mapBusy && !study;
   const drawerNote = board?.notes.find((n) => n.id === drawer?.id);
   // Before 应用: the open thread's pending route edit marks the stops it would replace or remove.
   const routePreview = useMemo(() => {

@@ -22,6 +22,8 @@ test("a new question starts ordinary goal questions; a chip sends its answer", a
   await page.getByLabel("新白板问题").fill("彩虹是怎么形成的？");
   await page.getByRole("button", { name: "开始探索", exact: true }).click();
   const drawer = page.locator(".drawer");
+  // 摸底 comes first; skipping it goes on to the goal questions.
+  await drawer.getByRole("button", { name: "跳过摸底" }).click();
   await expect(drawer).toContainText("你想拿到什么？");
   await drawer.getByRole("button", { name: "一份说明图", exact: true }).click();
   await expect(drawer).toContainText("怎样算讲清楚了？");
@@ -30,13 +32,13 @@ test("a new question starts ordinary goal questions; a chip sends its answer", a
   expect(asks.map((a: any) => a.mode)).toEqual(["chat", "chat"]);
   expect(asks[0].prompt).toContain("3–5 题");
   expect(asks[1].prompt).toContain("产出物");
-  await expect(drawer.getByRole("region", { name: "摸底" })).toHaveCount(0);
 });
 
 test("closing and reopening goal questions preserves the conversation without another call", async ({ page }) => {
   await installFakeAtlas(page);
   await newQuestion(page, "彩虹是怎么形成的？");
   const drawer = page.locator(".drawer");
+  await drawer.getByRole("button", { name: "跳过摸底" }).click();
   await expect(drawer.locator(".msg.assistant.chat")).toHaveCount(1);
   const text = await drawer.locator(".msg.assistant.chat").textContent();
   await drawer.getByLabel("关闭").click();
