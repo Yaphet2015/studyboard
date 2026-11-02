@@ -9,6 +9,7 @@ import {
 import { createEmptyBoard, buildMapFromAI } from "../src/model/boards";
 import {
   cardMastered,
+  knownIds,
   gapMessage,
   upgradeCard,
   parseAssessment,
@@ -295,5 +296,24 @@ describe("chat and card rendering", () => {
     expect(core).not.toContain("<input");
     expect(hard).toContain('placeholder="你觉得呢？"');
     expect(hard).toContain(cards[2].questionPrompt);
+  });
+});
+
+describe("摸底「已会」on weighted routes", () => {
+  const base = (over: Partial<import("../src/shared/types").ConceptNode>[]) =>
+    over.map((o, i) => ({ id: `n${i}`, parentId: i === 0 ? null : "n0", title: `t${i}`, body: "", status: "unseen", weight: "background", ...o }) as import("../src/shared/types").ConceptNode);
+  it("inherits from a probe-sealed station, never counts as mastery, and stops at revoked or reviewed cards", () => {
+    const nodes = base([
+      { weight: undefined },
+      { id: "s1", seal: "probe", status: "explained", beat: "done", weight: "core" },
+      { id: "c1", parentId: "s1" },
+      { id: "c2", parentId: "s1", seal: "probe-revoked", status: "exploring" },
+      { id: "c3", parentId: "s1", seal: "probe-reviewed", status: "explained" },
+      { id: "s2", status: "explained", seal: "test", weight: "core" },
+    ]);
+    expect([...knownIds(nodes)].sort()).toEqual(["c1", "s1"]);
+    expect(cardMastered(nodes[1])).toBe(false);
+    expect(cardMastered(nodes[4])).toBe(true); // background 懂了 after 摸底 counts as mastery
+    expect(cardMastered(nodes[5])).toBe(true);
   });
 });

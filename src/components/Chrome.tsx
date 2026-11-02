@@ -1,3 +1,4 @@
+import { cardMastered } from "../model/progress";
 import { useEffect, useMemo, useState } from "react";
 import {
   MiniMap,
@@ -129,17 +130,22 @@ export function Palette({
   );
 }
 
-export function Progress({ nodes }: { nodes: ConceptNode[] }) {
+export function Progress({ nodes, known }: { nodes: ConceptNode[]; known?: Set<string> }) {
   const concepts = nodes.filter((n) => n.parentId !== null);
-  const done = concepts.filter((n) => n.status === "explained").length;
+  // Weighted routes: 已会 (摸底) is counted apart from 掌握 and never as a sealed segment.
+  const weighted = !!known && concepts.some((n) => known.has(n.id));
+  const stateOf = (n: ConceptNode) =>
+    weighted ? (known!.has(n.id) ? "known" : cardMastered(n) ? "explained" : n.status === "unseen" ? "unseen" : "exploring") : n.status;
+  const done = concepts.filter((n) => stateOf(n) === "explained").length;
+  const knownCount = weighted ? concepts.filter((n) => known!.has(n.id)).length : 0;
   return (
-    <div className="chrome progress">
+    <div className="chrome progress" title={knownCount ? "● 掌握　○ 读过　已会（摸底）" : undefined}>
       <span className="lab">理解进度</span>
       {concepts.length > 16 ? (
         // Many concepts: one continuous bar, filled by share of each state.
         <span className="bar long" aria-hidden="true">
-          {(["explained", "exploring", "unseen"] as const).map((st) => {
-            const k = concepts.filter((n) => n.status === st).length;
+          {(["explained", "known", "exploring", "unseen"] as const).map((st) => {
+            const k = concepts.filter((n) => stateOf(n) === st).length;
             return k ? (
               <i key={st} className={`s-${st}`} style={{ flexGrow: k }} />
             ) : null;
@@ -148,16 +154,17 @@ export function Progress({ nodes }: { nodes: ConceptNode[] }) {
       ) : (
         <span className="bar" aria-hidden="true">
           {concepts.map((n) => (
-            <i key={n.id} className={`s-${n.status}`} />
+            <i key={n.id} className={`s-${stateOf(n)}`} />
           ))}
         </span>
       )}
       <span
         className="count"
-        aria-label={`${concepts.length} 个概念里讲清楚了 ${done} 个`}
+        aria-label={`${concepts.length} 个概念里讲清楚了 ${done} 个${knownCount ? `，摸底已会 ${knownCount} 个` : ""}`}
       >
+        {knownCount ? `掌握 ${done} · 已会 ${knownCount} ` : null}
         <b>
-          {done} / {concepts.length}
+          {knownCount ? `/ ${concepts.length}` : `${done} / ${concepts.length}`}
         </b>
       </span>
     </div>

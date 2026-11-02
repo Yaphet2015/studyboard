@@ -388,7 +388,7 @@ export function applyFrontier(board: Board): Board {
   const f = probe.frontier ?? 0;
   const levels = stationLevels(board);
   const nodes = board.nodes.map((n): ConceptNode => {
-    if (n.seal === "test") return n;
+    if (n.seal === "test" || n.seal === "probe-revoked" || n.seal === "probe-reviewed") return n;
     const level = levels.get(n.id);
     const below = level !== undefined && level < f;
     if (below) return { ...n, seal: "probe", status: "explained", beat: "done" };

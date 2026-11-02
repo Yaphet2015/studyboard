@@ -1,4 +1,4 @@
-import { assessmentPrompt, gapMessage, goalText, parseAssessment, structuredGoal, upgradeCard } from "./model/goal";
+import { assessmentPrompt, cardMastered, gapMessage, goalText, knownIds, parseAssessment, structuredGoal, upgradeCard } from "./model/goal";
 import { AgentEdits } from "./components/AgentEditProse";
 import { planAgentEdits, editDuration, existingBodyChanges, type AgentEdit } from "./model/agent-edit";
 import {
@@ -1448,9 +1448,10 @@ export default function App() {
       let next: Board = { ...boardRef.current!, probe: state };
       if (next.route?.length) next = applyFrontier(next);
       edit(() => next);
-      if (!next.route?.length && !next.plan) requestPlan(next);
+      // New question: 摸底 first, then the goal questions (kickoff); the plan follows the kickoff's ready:true.
+      if (!next.route?.length && !next.plan) startKickoff();
     },
-    [edit, requestPlan],
+    [edit, startKickoff],
   );
   /** Run the machine until it needs an answer (ask) or is done; EXPAND / REFINE are generation calls. */
   const advanceProbe = useCallback(
@@ -1771,7 +1772,8 @@ export default function App() {
     }
     // A new question starts the guided kickoff (or leads to AI settings) instead of a silent map.
     if (kickoff) {
-      startKickoff();
+      if (settings.configured) startProbe();
+      else startKickoff();
     }
   }
   async function importBoardFile(file: File) {
@@ -1930,7 +1932,14 @@ export default function App() {
   }, [addNote, edit, showToast]);
   readCardRef.current = (id) => {
     const card = boardRef.current?.nodes.find(n => n.id === id);
-    if (!card || card.status === "explained") return;
+    if (!card || cardMastered(card)) return;
+    // 摸底 already showed this is known, so a reviewed 懂了 counts as mastery (Yaphet's call).
+    if (knownIds(boardRef.current!.nodes).has(id)) {
+      patchNode(id, { status: "explained", beat: "done", seal: "probe-reviewed", fails: 0 });
+      void assessStop(id);
+      return;
+    }
+    if (card.status === "explained") return;
     // Reading is recorded separately from demonstrated mastery.
     patchNode(id, { status: "exploring", beat: "done" });
     void assessStop(id);
@@ -1944,15 +1953,17 @@ export default function App() {
     if (boardRef.current?.id !== initial.id || !noteId) return;
     const current = boardRef.current.nodes.find(n => n.id === id);
     if (!current || current.body !== card.body || current.weight !== card.weight) return;
+    // A miss on a 摸底「已会」card only revokes that card; probe-revoked keeps re-probing from re-sealing it.
+    const wasKnown = !!mark && !mark.pass && knownIds(boardRef.current.nodes).has(id);
     edit(b => ({
       ...b,
       nodes: b.nodes.map(n => n.id === id ? { ...n,
-        ...(mark?.pass ? { status: "explained" as const, beat: "done" as const, seal: "test" as const, fails: 0 } : mark ? { ...upgradeCard(n), fails: Math.min(99, (n.fails ?? 0) + 1) } : {}),
+        ...(mark?.pass ? { status: "explained" as const, beat: "done" as const, seal: "test" as const, fails: 0 } : mark ? { ...(wasKnown ? { seal: "probe-revoked" as const, status: "exploring" as const } : {}), ...upgradeCard(n), fails: Math.min(99, (n.fails ?? 0) + 1) } : {}),
         explain: answer,
       } : n),
       notes: b.notes.map(n => n.id === noteId ? { ...n, messages: cacheMessages([...n.messages,
         { id: uid(), role: "user", text: answer, createdAt: now(), meta: { chat: true } },
-        { id: uid(), role: "assistant", text: mark ? mark.pass ? "讲清楚了。" : `再想想：${mark.missing || "结合卡片里的依据说说为什么。"}` : "这次没判出来，稍后再提交一次。", createdAt: now(), meta: { chat: true } },
+        { id: uid(), role: "assistant", text: mark ? mark.pass ? "讲清楚了。" : `${wasKnown ? "这张我之前估计你会，看来还值得再看一下，已经放回路线里。\n\n" : ""}再想想：${mark.missing || "结合卡片里的依据说说为什么。"}` : "这次没判出来，稍后再提交一次。", createdAt: now(), meta: { chat: true } },
       ]) } : n),
     }));
     if (mark?.pass) void assessStop(id);
@@ -2130,7 +2141,9 @@ export default function App() {
     addNote({ kind: "node", id }, { cards: false });
   };
   startFirstRef.current = () => {
-    const first = boardRef.current && routeOf(boardRef.current)[0];
+    // Stations the 摸底 already sealed are skipped: start at the first one above the learner's edge.
+    const route = boardRef.current ? routeOf(boardRef.current) : [];
+    const first = route.find((c) => !c.seal) ?? route[0];
     if (first) {
       patchNode(first.id, { status: "exploring", beat: first.weight === "background" ? "learn" : first.weight === "core" ? "test" : "explain" });
       addNote({ kind: "node", id: first.id }, { cards: false });
@@ -2590,7 +2603,7 @@ export default function App() {
     });
     api.ask(request).catch(() => requestMeta.current.delete(request.requestId));
   };
-  const kickoffReady = needsKickoff(board) && !board?.probe && !mapBusy && !study;
+  const kickoffReady = needsKickoff(board) && board?.probe?.status !== "asking" && !mapBusy && !study;
   const drawerNote = board?.notes.find((n) => n.id === drawer?.id);
   // Before 应用: the open thread's pending route edit marks the stops it would replace or remove.
   const routePreview = useMemo(() => {
@@ -2677,8 +2690,20 @@ export default function App() {
     () => sectionNumbers(board?.nodes ?? []),
     [board?.nodes],
   );
+  // 摸底「已会」only shows on weighted AI routes.
+  const knownSet = useMemo(
+    () => (board?.kind === "ai" ? knownIds(board.nodes) : new Set<string>()),
+    [board?.kind, board?.nodes],
+  );
   const nodes = useMemo<CanvasNode[]>(() => {
     if (!shown || !board) return [];
+    const knownStation = (id: string): number | undefined => {
+      for (let n = board.nodes.find((x) => x.id === id), hops = 0; n && hops < 64; n = board.nodes.find((x) => x.id === n!.parentId), hops++) {
+        const s = stationOf(board, n.id);
+        if (s !== undefined) return s;
+      }
+      return undefined;
+    };
     const generatingCards = new Set<string>();
     for (const { request, anchor } of requestMeta.current.values()) {
       if (
@@ -2764,6 +2789,7 @@ export default function App() {
             : {}),
           onPreviewAdd: hoverAdd,
           station: stationOf(board, n.id),
+          ...(knownSet.has(n.id) ? { known: knownStation(n.id) } : {}),
           isNext: nextId === n.id,
           lit: !!board.wrap?.lit.includes(n.id),
           ...(routePreview.get(n.id) ? { preview: routePreview.get(n.id) } : {}),
@@ -2805,6 +2831,7 @@ export default function App() {
     return out;
   }, [
     routePreview,
+    knownSet,
     shown,
     board,
     layout,
@@ -3209,7 +3236,7 @@ export default function App() {
               return (
                 <div className="canvas-corner">
                   {paused > 0 && <PausedPill onOpen={() => setShowCanvasActivity(true)} />}
-                  <Progress nodes={board.nodes} />
+                  <Progress nodes={board.nodes} known={board.kind === "ai" ? knownSet : undefined} />
                   <CanvasMenu
                     paused={paused}
                     onReprobe={reprobe}

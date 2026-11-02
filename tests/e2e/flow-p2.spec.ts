@@ -22,12 +22,18 @@ async function newQuestion(page: Page, topic: string) {
   await page.getByRole("button", { name: "开始探索", exact: true }).click();
 }
 
-// spec-v2 (goal-weights): a new question now opens the chat kickoff (产出物/成功标准/约束 3–5 题),
-// not the 摸底 probe, so this entry path is no longer reachable from 新问题. Kept for reference until the
-// probe code is either rewired or removed.
-test.skip("摸底 v2: brackets the edge without levels or marks; stations below the start get the light seal", async ({ page }) => {
+// New question: 摸底 first, then the goal questions (spec-v2 kickoff), then the plan/route.
+test("摸底 v2: brackets the edge without levels or marks, then goal questions, then the route; stations below the start get the light seal", async ({ page }) => {
   await installFakeAtlas(page);
-  await newQuestion(page, "重疾险有哪些重要条款？");
+  await gotoApp(page);
+  await page.evaluate(() => { (window as any).__atlasChatAnswers = [
+    '摸底完成。做完以后，你想拿到什么？\n```json\n{"chips":["一份投保核对清单"]}\n```',
+    '记下了，路线会帮你做出这份清单。\n```json\n{"goal":{"deliverable":"一份投保核对清单","criteria":[{"id":"check","label":"能逐条核对合同条款"}],"constraints":[]},"ready":true}\n```',
+  ]; });
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("button", { name: /新的问题/ }).click();
+  await page.getByLabel("新白板问题").fill("重疾险有哪些重要条款？");
+  await page.getByRole("button", { name: "开始探索", exact: true }).click();
   const probe = page.locator(".drawer").getByRole("region", { name: "摸底" });
   // No levels, scores or right/wrong marks: just 第 n 题 + dots and 正在找你的起点.
   await expect(probe).toContainText("第 1 题");
@@ -56,22 +62,32 @@ test.skip("摸底 v2: brackets the edge without levels or marks; stations below 
   await expect(probe).toContainText("合同结构");
   await expect(probe).toContainText("从「条款细读」开始，正好在你会的上面一层。");
   await expect(probe.locator(".probe-known li")).toHaveCount(3);
+  // Then the goal questions (not the plan yet): no plan request before the goal is ready.
+  const drawerEl = page.locator(".drawer");
+  await expect(drawerEl).toContainText("你想拿到什么？");
+  expect(await page.evaluate(() => (window as any).__atlasPlans?.length ?? 0)).toBe(0);
+  await drawerEl.getByRole("button", { name: "一份投保核对清单", exact: true }).click();
   // MCQ without a reason is graded locally: no mark calls.
   expect((await gates(page)).filter((r) => r.mode === "mark")).toHaveLength(0);
-  // The plan is written for this learner, and the map is asked for ladder levels.
-  const plan = page.locator(".drawer .plan-editor");
-  await expect(plan).toContainText("学完后");
+  // After the goal is ready, the plan is written for this learner and goal; the route starts from the drawer.
+  const start = page.locator(".drawer").getByRole("button", { name: "开始第 1 站", exact: true });
+  await expect(start).toBeEnabled();
   // Plain prose: no question-type chip (机制/决策/…) anywhere in the probe or plan UI.
   await expect(page.locator(".drawer .plan-kind")).toHaveCount(0);
   await expect(page.locator(".drawer")).not.toContainText(/概念：是什么|机制：如何运作|决策：怎么选|操作：怎么做|学习路径：怎么学|对比：有什么区别/);
   const plans = await page.evaluate(() => (window as any).__atlasPlans);
+  expect(plans[0].prompt).toContain("一份投保核对清单");
   expect(plans[0].prompt).toContain("摸底结果：学习者已经懂：「生病了保险给钱」、「给付型 vs 报销型」、「合同结构」。路线从「条款细读」开始");
-  await plan.getByRole("button", { name: "确认计划，铺成第一层" }).click();
+  await start.click();
   await expect(page.locator(".react-flow__node-concept")).toHaveCount(3);
-  const first = page.locator(".react-flow__node-concept").first();
-  await expect(first.locator(".seal.light")).toHaveCount(1);
-  // Without card levels, the 3 stations spread over the 5-point chain (0, 2, 4): two fall before 条款细读.
-  await expect(page.locator(".react-flow__node-concept .seal.light")).toHaveCount(2);
+  // Without card levels, the 3 stations spread over the 5-point chain (0, 2, 4): two fall before 条款细读
+  // and get the probe seal. (Weighted AI stations show 读过/掌握 dots instead of the light stamp.)
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("fake-atlas-disk")!).find((b: any) => b.probe)?.nodes.filter((n: any) => n.seal === "probe").length))
+    .toBe(2);
+  // …and those two stations show the outlined 已会 stamp in place of the 读过/掌握 dot.
+  await expect(page.locator(".card .station .known-mark")).toHaveCount(2);
+  await expect(page.locator(".progress .bar i.s-known")).toHaveCount(2);
   await page.locator(".drawer").getByLabel("关闭").click();
   const bar = page.getByRole("region", { name: "下一步" });
   await expect(bar).toContainText("下一步 · 第 3 站");
@@ -91,6 +107,7 @@ test.skip("摸底 v2: brackets the edge without levels or marks; stations below 
   await expect(drawer.getByRole("region", { name: "摸底" })).toContainText("共 3 站");
   await drawer.getByRole("button", { name: "我想从头学" }).click();
   await expect(page.locator(".seal.light")).toHaveCount(0);
+  await expect(page.locator(".card .known-mark")).toHaveCount(0);
   await drawer.getByLabel("关闭").click();
   await expect(bar).toContainText("下一步 · 第 1 站");
 });

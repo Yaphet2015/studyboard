@@ -25,8 +25,7 @@ export const structuredGoal = (board: Board) =>
   typeof board.plan?.goal === "object" ? board.plan.goal : undefined;
 
 /** Background reading never demonstrates mastery, including legacy explained cards. */
-export const cardMastered = (card: Pick<ConceptNode, "weight" | "status">) =>
-  (card.weight === "core" || card.weight === "hard") && card.status === "explained";
+export { cardMastered, knownIds } from "./progress";
 
 /** A single promotion per learner action. Questions are prepared by generation, never invented facts. */
 export function upgradeCard(card: ConceptNode): Partial<ConceptNode> {
