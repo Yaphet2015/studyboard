@@ -5,12 +5,6 @@ import { gotoApp } from "./ready";
 
 const card = (page: Page, id: string) => page.locator(`.react-flow__node[data-id="${id}"]`);
 const gates = (page: Page) => page.evaluate(() => (window as any).__atlasGates as any[]);
-/** The routed board without the fixture's own child under 第 2 站, so a stuck stop has none yet. */
-const bare = () => {
-  const b = routedBoard();
-  b.nodes = b.nodes.filter((n: any) => n.parentId !== "c-when-not");
-  return b;
-};
 const disk = (page: Page) =>
   page.evaluate(() => JSON.parse(localStorage.getItem("fake-atlas-disk")!)[0]);
 
@@ -137,72 +131,6 @@ test("a light-sealed stop can be rechecked; failing it removes the seal and queu
       return [d.nodes.find((n: any) => n.id === "c-what").seal ?? "none", d.route.join(",")];
     })
     .toEqual(["none", "c-when-not,c-what,c-how,c-money"]);
-});
-
-// spec-v2 (goal-weights): the first wrong answer now promotes the card one weight level and swaps in
-// the choice footer (see flow.spec.ts), so the old two-wrong-answers 卡住了 exits are no longer reached.
-test.skip("stuck after two wrong answers: three exits; 换个类比 goes back to 学, 往下拆 drafts two children", async ({ page }) => {
-  const b = bare();
-  Object.assign(b.nodes.find((n: any) => n.id === "c-when-not"), { status: "exploring", beat: "test", fails: 1 });
-  await installFakeAtlas(page, true, "web", [b]);
-  await page.addInitScript(() => {
-    (window as any).__atlasExpansionAnswers = [
-      JSON.stringify({
-        nodes: [
-          { id: "s1", parent: "anchor", title: "观察期从哪天开始算", body: "从合同生效日起算，不是从交钱那天。续保的保单通常不再重新计算。" },
-          { id: "s2", parent: "anchor", title: "健康告知没问到的不用说", body: "保险公司只就书面询问的事项要求如实回答，问卷外的情况不构成隐瞒。" },
-        ],
-        relations: [],
-      }),
-    ];
-  });
-  await gotoApp(page);
-  const bar = page.getByRole("region", { name: "下一步" });
-  await bar.getByRole("button", { name: /开始/ }).click();
-  const stop = page.getByRole("region", { name: "这一站" });
-  await stop.getByRole("radio", { name: /疾病定义/ }).click();
-  await stop.getByRole("button", { name: /提交/ }).click();
-  const exits = stop.getByRole("group", { name: "卡住了" });
-  await expect(stop).toContainText("没关系，这说明这里藏着更小的概念。");
-  await expect(exits.getByRole("button")).toHaveCount(3);
-  await expect(exits.getByRole("button").first()).toContainText("推荐");
-  // 换个类比: one short call; back to 学 with the analogy shown.
-  await exits.getByRole("button", { name: /换个类比/ }).click();
-  await expect(stop.locator(".beat.on")).toHaveText("学");
-  await expect(stop.locator(".beat-analogy")).toContainText("健身卡");
-  expect((await gates(page)).filter((r) => r.mode === "probe")).toHaveLength(1);
-  // Stuck again → 往下拆.
-  await stop.getByRole("button", { name: /读完了/ }).click();
-  await stop.getByLabel("用我的话讲").fill("等待期里确诊一般不赔");
-  await stop.getByRole("button", { name: /提交/ }).click();
-  for (let i = 0; i < 2; i++) {
-    await stop.getByRole("radio", { name: /疾病定义/ }).click();
-    await stop.getByRole("button", { name: /提交/ }).click();
-  }
-  await exits.getByRole("button", { name: /往下拆/ }).click();
-  await expect(page.locator(".react-flow__node", { hasText: "观察期从哪天开始算" })).toBeVisible();
-  const asks = await page.evaluate(() => (window as any).__atlasAsks);
-  expect(asks.at(-1).mode).toBe("expand");
-  expect(asks.at(-1).prompt).toContain("只拆出 2 个更小、更基础的子问题");
-  await expect
-    .poll(async () => (await disk(page)).nodes.filter((n: any) => n.meta?.split).map((n: any) => n.parentId))
-    .toEqual(["c-when-not", "c-when-not"]);
-  await page.locator(".drawer").getByLabel("关闭").click();
-  await expect(bar).toContainText("卡住了，先学拆出来的小问题");
-  await expect(bar).toContainText("观察期从哪天开始算");
-});
-
-test("稍后 puts the stuck stop off to the end of the route", async ({ page }) => {
-  const b = bare();
-  Object.assign(b.nodes.find((n: any) => n.id === "c-when-not"), { status: "exploring", beat: "test", fails: 2 });
-  await installFakeAtlas(page, true, "web", [b]);
-  await gotoApp(page);
-  const bar = page.getByRole("region", { name: "下一步" });
-  await bar.getByRole("button", { name: /开始/ }).click();
-  await page.getByRole("group", { name: "卡住了" }).getByRole("button", { name: /稍后/ }).click();
-  await expect(bar).toContainText("下一步 · 第 2 站");
-  await expect(bar).not.toContainText("等待期");
-  await expect(card(page, "c-when-not").locator(".station")).toHaveText("第 4 站");
 });
 
 test("合起来讲: with every stop sealed, the root asks for the wrap-up; the stations it reaches light up", async ({ page }) => {

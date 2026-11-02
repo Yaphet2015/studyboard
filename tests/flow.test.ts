@@ -256,12 +256,6 @@ describe("next step", () => {
     expect(nextStep(b)).toMatchObject({ kind: "continue", beat: "explain" });
     expect(nextStep(b, new Set(["c"]))).toMatchObject({ kind: "station", station: 2 });
   });
-  it("rule 3: children of a stuck stop come first", () => {
-    const b = routed();
-    b.nodes[2] = { ...b.nodes[2], fails: 2 };
-    b.nodes.push(node("b1", "小问题", "b", 0));
-    expect(nextStep(b)).toMatchObject({ kind: "child", parent: { id: "b" }, station: 2 });
-  });
   it("rule 6: all sealed → 合起来讲", () => {
     const b = routed();
     b.nodes = b.nodes.map((n) => (n.parentId ? { ...n, status: "explained" as const } : n));

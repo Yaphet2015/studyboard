@@ -154,10 +154,8 @@ import { applyGate } from "./model/gate";
 import { learnerProfile, setLearnerProfile } from "./model/profile-context";
 import { profileText } from "./shared/profile";
 import { answerProbe, applyExpand, applyFrontier, applyRefine, bounds as probeBounds, cacheChain, cachedChain, chainKey, chainPrompt, failRecheck, gradePrompt, localGrade, newProbe, nextStep as probeStep, parseGrade, parsePoints, probeLearner, refinePrompt, restartProbe, leaveConfirmation, skipProbe } from "./model/probe";
-import { afterChildSealed, analogyPrompt, isStuck, parseAnalogy, putOff, splitNote } from "./model/stuck";
 import { parseWrap, wrapPrompt } from "./model/wrap";
 import { ProbePanel } from "./components/ProbePanel";
-import { StuckExits } from "./components/StuckExits";
 import { WrapPanel } from "./components/WrapPanel";
 import { explainPoints, localMark, markPrompt, parseMark, testPoints, type Mark } from "./model/mark";
 import { questionNode } from "./shared/canvas";
@@ -352,8 +350,6 @@ export default function App() {
           hintSignature?: string;
           /** enrich: the new cards it decorates. */
           newIds?: string[];
-          /** expand from a stuck stop (往下拆): the new cards are its split children. */
-          split?: boolean;
           /** A picked ghost hint: select the card it becomes. */
           selectNew?: boolean;
           /** 重做下层 from a chat proposal: the old cards below the anchor are archived when new ones land. */
@@ -887,10 +883,6 @@ export default function App() {
                   const born = applied.added[0];
                   setTimeout(() => setSelection({ kind: "node", id: born }), 0);
                 }
-                if (meta.split && applied.added.length) {
-                  const born = new Set(applied.added);
-                  next = { ...next, nodes: next.nodes.map((n) => (born.has(n.id) ? { ...n, meta: { ...n.meta, split: true } } : n)) };
-                }
                 if (mode === "map" && !target.route?.length && anchorId === questionNode(target)?.id) {
                   const route = defaultRoute(next);
                   // 摸底 done: stations below the frontier get the light A seal.
@@ -1056,7 +1048,7 @@ export default function App() {
     [edit, openDrawer],
   );
   const sendAI = useCallback(
-    async (request: AIRequest, anchor?: string, extra?: { selectNew?: boolean; split?: boolean; reExpand?: ReExpandJob }) => {
+    async (request: AIRequest, anchor?: string, extra?: { selectNew?: boolean; reExpand?: ReExpandJob }) => {
       requestMeta.current.set(request.requestId, { request, anchor, ...extra });
       setPending((p) => ({
         ...p,
@@ -1179,7 +1171,7 @@ export default function App() {
     [settings.configured, edit],
   );
   const expand = useCallback(
-    (id: string, angle?: DigAngle, promptOverride?: string, extra?: { selectNew?: boolean; split?: boolean; reExpand?: ReExpandJob }): boolean => {
+    (id: string, angle?: DigAngle, promptOverride?: string, extra?: { selectNew?: boolean; reExpand?: ReExpandJob }): boolean => {
       if (locked()) return false;
       if (
         [...requestMeta.current.values()].some(
@@ -1968,38 +1960,6 @@ export default function App() {
     }));
     if (mark?.pass) void assessStop(id);
   };
-  const [stuckBusy, setStuckBusy] = useState<{ id: string; kind: "split" | "analogy" } | null>(null);
-  /** 往下拆: one gated expansion into exactly two smaller children under the stuck card. */
-  const splitStuck = useCallback(
-    (id: string) => {
-      const b = boardRef.current;
-      const n = b?.nodes.find((x) => x.id === id);
-      if (!b || !n) return;
-      if (b.nodes.some((c) => c.parentId === id && c.meta?.split)) return;
-      expand(id, undefined, expandPrompt(b, id) + splitNote(n), { split: true });
-    },
-    [expand],
-  );
-  const analogyStuck = useCallback(
-    async (id: string) => {
-      const n = boardRef.current?.nodes.find((x) => x.id === id);
-      if (!n) return;
-      setStuckBusy({ id, kind: "analogy" });
-      const prompt = analogyPrompt(n);
-      try {
-        const reply = await askQuietRef.current("probe", prompt, `analogy-${id}`);
-        if (import.meta.env.DEV) console.info(`[stuck] analogy ~${roughTokens(prompt, reply)} tokens`);
-        const analogy = parseAnalogy(reply);
-        if (analogy) patchNode(id, { analogy, beat: "learn", fails: 0 });
-        else showToast("这次没想出类比，换个办法试试？");
-      } catch (e) {
-        showToast(errorText(e));
-      } finally {
-        setStuckBusy(null);
-      }
-    },
-    [patchNode, showToast],
-  );
   /** 合起来讲: one short call says which stations the answer reached. */
   const submitWrap = useCallback(
     async (text: string): Promise<boolean> => {
@@ -2135,7 +2095,6 @@ export default function App() {
     }
     if (!("card" in next)) return;
     const id = next.card.id;
-    if (next.card.meta?.later) patchNode(id, { meta: { ...next.card.meta, later: false } });
     if (!next.card.beat && next.card.status !== "explained") patchNode(id, { beat: "guess" });
     setSelection({ kind: "node", id });
     addNote({ kind: "node", id }, { cards: false });
@@ -2195,7 +2154,6 @@ export default function App() {
     const stop = routeOf(b).find((n) => n.id === p.stopId);
     if (!stop || stop.status === "explained") return setProposal(noteId, messageId, { state: "expired" });
     setProposal(noteId, messageId, { state: "applied" });
-    if (stop.meta?.later) patchNode(stop.id, { meta: { ...stop.meta, later: false } });
     if (!stop.beat) patchNode(stop.id, { beat: "guess" });
     setSelection({ kind: "node", id: stop.id });
     // A stop that only has a title gets its content through the usual expand flow.
@@ -3497,7 +3455,7 @@ export default function App() {
               },
               onPatch: (patch: Partial<ConceptNode>) => {
                 if (patch.seal === "test") {
-                  edit((b) => afterChildSealed({ ...b, nodes: b.nodes.map((x) => (x.id === card.id ? { ...x, ...patch } : x)) }, card.id));
+                  patchNode(card.id, patch);
                   void assessStop(card.id);
                   return;
                 }
@@ -3507,17 +3465,6 @@ export default function App() {
                 edit((b) => failRecheck(b, card.id, nextId ?? undefined));
                 showToast("这一站排在下一步之后，再学一遍。");
               },
-              stuck: isStuck(card) ? (
-                <StuckExits
-                  busy={stuckBusy?.id === card.id ? stuckBusy.kind : mapBusy ? "split" : undefined}
-                  onSplit={() => splitStuck(card.id)}
-                  onAnalogy={() => void analogyStuck(card.id)}
-                  onLater={() => {
-                    edit((b) => putOff(b, card.id));
-                    closeDrawer();
-                  }}
-                />
-              ) : undefined,
               onMark: (kind: "explain" | "test", answer: string, choice: number | null) =>
                 markCard(card.id, kind, answer, choice),
             };

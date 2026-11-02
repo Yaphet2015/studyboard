@@ -66,14 +66,14 @@ export interface ConceptNode {
   check?: CardCheck;
   /** Where the learner is in this stop's four beats (先猜 → 学 → 讲 → 测). */
   beat?: Beat;
-  /** Wrong 测 answers so far (two open the stuck exits). */
+  /** Wrong 测 answers so far. */
   fails?: number;
   /** The learner's own 先猜 and 讲 text. */
   guess?: string;
   explain?: string;
   /** How the A seal was earned: by passing 测, or inferred from 摸底. probe-revoked: a 摸底 guess the learner later missed; never re-sealed by re-probing. probe-reviewed: a 已会 card re-checked after 摸底 (mastered, any weight). */
   seal?: "test" | "probe" | "probe-revoked" | "probe-reviewed";
-  /** 换个类比: a second explanation the learner asked for when stuck (shown in 学). */
+  /** Legacy (removed stuck exits): kept so old boards still parse; unused. */
   analogy?: string;
   /** Internal data, never rendered or exported. */
   meta?: CardMeta;
@@ -112,9 +112,9 @@ export interface CardMeta {
   missed?: string;
   /** The depth-ladder level this station teaches (摸底 maps the frontier onto it). */
   level?: number;
-  /** Split from a stuck stop (往下拆): learning it sends the learner back to the parent's 测. */
+  /** Legacy (removed stuck exits): kept so old boards still parse; unused. */
   split?: boolean;
-  /** 稍后: the learner put this stuck stop off; it goes to the end of the queue. */
+  /** Legacy (removed stuck exits): kept so old boards still parse; unused. */
   later?: boolean;
 }
 /** The depth ladder: what → why → how → edge → apply; compare sits beside it. */

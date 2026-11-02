@@ -14,8 +14,6 @@ export interface StudyProps {
   onPatch: (patch: Partial<ConceptNode>) => void;
   /** Mark a 讲 or 测 answer; null when marking failed (AI unavailable). */
   onMark: (kind: "explain" | "test", answer: string, choice: number | null) => Promise<Mark | null>;
-  /** Two wrong 测 answers: the stuck exits (phase 2 fills these in). */
-  stuck?: React.ReactNode;
   /** A light (摸底) seal failed its recheck: drop it and queue the stop after the current one. */
   onRecheckFail?: () => void;
 }
@@ -83,7 +81,7 @@ export function StopBeats({ card, study }: { card: ConceptNode; study: StudyProp
       return;
     }
     const fails = (card.fails ?? 0) + 1;
-    setFeedback({ ok: false, text: fails >= 2 ? "没关系，这说明这里藏着更小的概念。" : `还没对：${mark.missing || "再想想"}。再试一次？` });
+    setFeedback({ ok: false, text: `还没对：${mark.missing || "再想想"}。再试一次？` });
     study.onPatch({ fails });
   };
   if (card.weight && study.weightActions) return <section className="stop" aria-label="这一站"><CardProse body={card.body} cardId={card.id} /><CardSourceLine card={card} /><WeightFooter card={card} actions={study.weightActions} /></section>;
@@ -133,12 +131,6 @@ export function StopBeats({ card, study }: { card: ConceptNode; study: StudyProp
       {beat === "learn" && (
         <div className="beat-pane">
           {card.guess && <p className="beat-note">你猜的是：{card.guess}</p>}
-          {card.analogy && (
-            <p className="beat-analogy">
-              <span className="lab">换个类比</span>
-              {card.analogy}
-            </p>
-          )}
           <div className="beat-acts">
             <button className="btn primary" onClick={() => go({ beat: "explain" })}>
               读完了，我来讲讲
@@ -213,7 +205,6 @@ export function StopBeats({ card, study }: { card: ConceptNode; study: StudyProp
             }}
           />
           {feedback && <p className="beat-feedback" role="status">{feedback.text}</p>}
-          {(card.fails ?? 0) >= 2 && study.stuck}
           <div className="beat-acts">
             <button
               className="btn primary"

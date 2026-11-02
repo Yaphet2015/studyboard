@@ -4577,7 +4577,7 @@ kbd,
   display: none;
 }
 
-/* Flow phase 2: 摸底 ladder, stuck exits, 合起来讲 */
+/* Flow phase 2: 摸底 ladder, 合起来讲 */
 .probe-head {
   display: flex;
   align-items: baseline;
@@ -4646,59 +4646,6 @@ kbd,
   margin: 0;
   font: 400 14px/1.6 var(--kai);
   color: var(--ink);
-}
-.stuck {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.stuck-k {
-  margin: 0;
-  font: 700 13.5px var(--kai);
-  color: var(--ink);
-}
-.stuck-opt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  text-align: left;
-  font: 400 14px/1.4 var(--kai);
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  cursor: pointer;
-}
-.stuck-opt span {
-  flex: 1;
-}
-.stuck-opt em {
-  font: 700 11.5px var(--kai);
-  font-style: normal;
-  color: var(--accent);
-}
-.stuck-opt.rec {
-  border-color: var(--accent);
-}
-.stuck-opt:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 6%, var(--card));
-}
-.stuck-opt:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.beat-analogy {
-  margin: 0;
-  padding: 8px 10px;
-  border-left: 3px solid var(--accent);
-  font: 400 14px/1.7 var(--kai);
-  color: var(--ink);
-  background: color-mix(in srgb, var(--accent) 5%, var(--card));
-}
-.beat-analogy .lab {
-  display: block;
-  margin-bottom: 2px;
 }
 .stop .beat-sealed .btn.quiet {
   margin-left: auto;
