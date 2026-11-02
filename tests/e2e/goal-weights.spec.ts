@@ -356,3 +356,35 @@ test("wrong core choice promotes exactly once; background questions add a choice
     ),
   ).toHaveCount(2);
 });
+
+// Seal spec A: 摸底「已会」shows as an outlined stamp, a quieter card and one 复习一下 footer.
+for (const mode of ["light", "dark"] as const) {
+  test(`${mode}: 摸底已会 stamp beside 读过/掌握, and a reviewed background card counts as mastered`, async ({ page }) => {
+    const b = goalBoard();
+    const base = b.nodes[1];
+    const known = { ...base, id: "goal-known", title: "先认清交付对象", order: -1, seal: "probe" as const, status: "explained" as const, beat: "done" as const, weight: "core" as const };
+    const kid = (id: string, title: string, weight: "background" | "core") => ({ ...base, id, title, parentId: "goal-known", order: 0, status: "unseen" as const, beat: undefined, seal: undefined, weight });
+    b.nodes.push(known, kid("goal-known-bg", "背景：什么是交付", "background"), kid("goal-known-core", "核心：验收清单", "core"));
+    b.route = ["goal-known", ...b.route!];
+    await theme(page, mode);
+    await installFakeAtlas(page, true, "web", [b]);
+    await gotoApp(page);
+    // Station 1 and both cards under it inherit 已会; station 2 keeps its 读过 dot, nothing else.
+    await expect(page.locator(".card .known-mark")).toHaveCount(3);
+    await expect(card(page, "goal-known").locator(".station")).toContainText("已会· 第 1 站");
+    await expect(card(page, "goal-known").getByRole("img", { name: "你已经会了（摸底推断），可跳过或复习" })).toBeVisible();
+    await expect(card(page, "goal-known")).toContainText("可跳过");
+    await expect(card(page, "goal-known").locator(".weight-options")).toHaveCount(0);
+    await expect(card(page, "goal-bg").locator(".station-dot.read")).toHaveCount(1);
+    await expect(page.locator(".progress")).toContainText("已会 3");
+    await screenshot(page, `seal-route-${mode}`);
+    // 复习一下 restores the card's own footer; a background 懂了 after 摸底 counts as mastery.
+    await card(page, "goal-known-bg").getByRole("button", { name: "复习一下" }).click();
+    await card(page, "goal-known-bg").getByRole("button", { name: "懂了", exact: true }).click();
+    await expect(card(page, "goal-known-bg")).toContainText("已掌握");
+    await expect(card(page, "goal-known-bg").locator(".known-mark")).toHaveCount(0);
+    await expect.poll(async () => (await disk(page)).nodes.find((n: any) => n.id === "goal-known-bg").seal).toBe("probe-reviewed");
+    await expect(page.locator(".progress")).toContainText("已会 2");
+    await screenshot(page, `seal-reviewed-${mode}`);
+  });
+}

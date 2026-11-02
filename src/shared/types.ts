@@ -71,8 +71,8 @@ export interface ConceptNode {
   /** The learner's own 先猜 and 讲 text. */
   guess?: string;
   explain?: string;
-  /** How the A seal was earned: by passing 测, or inferred from 摸底. */
-  seal?: "test" | "probe";
+  /** How the A seal was earned: by passing 测, or inferred from 摸底. probe-revoked: a 摸底 guess the learner later missed; never re-sealed by re-probing. probe-reviewed: a 已会 card re-checked after 摸底 (mastered, any weight). */
+  seal?: "test" | "probe" | "probe-revoked" | "probe-reviewed";
   /** 换个类比: a second explanation the learner asked for when stuck (shown in 学). */
   analogy?: string;
   /** Internal data, never rendered or exported. */
@@ -382,6 +382,8 @@ export interface BoardSummary {
 export interface BoardProgress {
   sealed: number;
   total: number;
+  /** 摸底「已会」cards on a weighted route, counted apart from sealed. */
+  known?: number;
   done: boolean;
 }
 export type Selection = {

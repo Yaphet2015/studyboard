@@ -10,10 +10,14 @@ export interface WeightActions {
 export function WeightFooter({
   card,
   actions,
+  known = false,
 }: {
   card: ConceptNode;
   actions: WeightActions;
+  /** 摸底「已会」: one shared 复习一下 footer until the learner opens the card's own one. */
+  known?: boolean;
 }) {
+  const [reviewing, setReviewing] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const initialWeight = useRef(card.weight);
@@ -31,13 +35,20 @@ export function WeightFooter({
   return (
     <div
       key={weight}
-      className={`weight-footer nodrag nopan ${weight === "background" ? "background" : ""} ${initialWeight.current !== card.weight ? "upgraded" : ""}`}
+      className={`weight-footer nodrag nopan ${weight === "background" && !(known && !reviewing) ? "background" : ""} ${initialWeight.current !== card.weight ? "upgraded" : ""}`}
       data-weight={weight}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
-      {cardMastered(card) ||
-      (weight === "background" && (card.beat === "done" || card.status === "explained")) ? (
+      {known && !reviewing ? (
+        <div className="known-footer">
+          <button className="btn sm quiet" onClick={() => setReviewing(true)}>
+            复习一下
+          </button>
+          <span className="lab">可跳过</span>
+        </div>
+      ) : cardMastered(card) ||
+      (!known && weight === "background" && (card.beat === "done" || card.status === "explained")) ? (
         <span className="lab">
           {cardMastered(card) ? "已掌握" : "读过"}
         </span>

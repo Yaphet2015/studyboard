@@ -85,6 +85,9 @@ test("摸底 v2: brackets the edge without levels or marks, then goal questions,
   await expect
     .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("fake-atlas-disk")!).find((b: any) => b.probe)?.nodes.filter((n: any) => n.seal === "probe").length))
     .toBe(2);
+  // …and those two stations show the outlined 已会 stamp in place of the 读过/掌握 dot.
+  await expect(page.locator(".card .station .known-mark")).toHaveCount(2);
+  await expect(page.locator(".progress .bar i.s-known")).toHaveCount(2);
   await page.locator(".drawer").getByLabel("关闭").click();
   const bar = page.getByRole("region", { name: "下一步" });
   await expect(bar).toContainText("下一步 · 第 3 站");
@@ -104,6 +107,7 @@ test("摸底 v2: brackets the edge without levels or marks, then goal questions,
   await expect(drawer.getByRole("region", { name: "摸底" })).toContainText("共 3 站");
   await drawer.getByRole("button", { name: "我想从头学" }).click();
   await expect(page.locator(".seal.light")).toHaveCount(0);
+  await expect(page.locator(".card .known-mark")).toHaveCount(0);
   await drawer.getByLabel("关闭").click();
   await expect(bar).toContainText("下一步 · 第 1 站");
 });

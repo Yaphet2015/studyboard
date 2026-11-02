@@ -197,7 +197,7 @@ export const conceptNodeSchema = z
     fails: z.number().int().min(0).max(99).optional(),
     guess: z.string().max(2_000).optional(),
     explain: z.string().max(4_000).optional(),
-    seal: z.enum(["test", "probe"]).optional(),
+    seal: z.enum(["test", "probe", "probe-revoked", "probe-reviewed"]).optional(),
     analogy: z.string().max(2_000).optional(),
     meta: z
       .object({
@@ -520,7 +520,7 @@ export const boardSchema = z
     archivedAt: timestampSchema.optional(),
     sessionCount: z.number().int().min(0).optional(),
     progress: z
-      .object({ sealed: z.number().int().min(0), total: z.number().int().min(0), done: z.boolean() })
+      .object({ sealed: z.number().int().min(0), total: z.number().int().min(0), known: z.number().int().min(0).optional(), done: z.boolean() })
       .strict()
       .optional(),
     canvasVersion: idSchema.optional(),

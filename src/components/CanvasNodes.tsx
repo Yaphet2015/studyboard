@@ -80,6 +80,8 @@ export type CardData = {
   kickoffStarted?: boolean;
   /** Station number on the learning route (第 n 站). */
   station?: number;
+  /** 摸底「已会」(weighted routes): the station number it was inferred at. */
+  known?: number;
   /** This card is the one next step: red outline + 下一步 label. */
   isNext?: boolean;
   /** 合起来讲 reached this station: it lights up. */
@@ -506,7 +508,7 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
   return (
     <article
       {...attention}
-      className={`card s-${n.status} ${selected || data.noteOpen ? "is-selected" : ""} ${animate ? "animate" : ""} ${data.dimmed ? "dimmed" : ""} ${data.lit ? "lit" : ""} ${data.preview ? `pv-${data.preview}` : ""} ${hintsOpen ? "hints-open" : ""} ${controlsActive ? "hint-controls-active" : ""}`}
+      className={`card s-${n.status} ${data.known !== undefined ? "known" : ""} ${selected || data.noteOpen ? "is-selected" : ""} ${animate ? "animate" : ""} ${data.dimmed ? "dimmed" : ""} ${data.lit ? "lit" : ""} ${data.preview ? `pv-${data.preview}` : ""} ${hintsOpen ? "hints-open" : ""} ${controlsActive ? "hint-controls-active" : ""}`}
       aria-busy={data.generating || undefined}
     >
       {data.generating && <BorderBeam />}
@@ -514,10 +516,15 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
       <Ports linkMode={data.linkMode} />
       {mastered && (!data.weightActions || data.station === undefined) && <Seal light={n.seal === "probe"} />}
       {data.preview === "replace" && <span className="pv-tag">待替换</span>}
-      {data.station !== undefined && data.preview !== "remove" && (
-        <span className={`station ${data.isNext ? "next" : ""} ${mastered ? "sealed" : ""}`} aria-label={`第 ${data.station} 站`}>
-          {n.status !== "unseen" && <i className={`station-dot ${mastered ? "mastered" : "read"}`} aria-label={mastered ? "掌握" : "读过"} />}
-          <span>第 {data.station} 站</span>
+      {(data.station !== undefined || data.known !== undefined) && data.preview !== "remove" && (
+        <span className={`station ${data.isNext ? "next" : ""} ${mastered ? "sealed" : ""} ${data.known !== undefined ? "known" : ""}`} aria-label={`第 ${data.station ?? data.known} 站`}>
+          {data.known !== undefined ? (
+            <span className="known-mark" role="img" aria-label="你已经会了（摸底推断），可跳过或复习">
+              <Seal outline size={13} />
+              <span>已会</span>
+            </span>
+          ) : n.status !== "unseen" && !(data.weightActions && n.seal === "probe") && <i className={`station-dot ${mastered ? "mastered" : "read"}`} aria-label={mastered ? "掌握" : "读过"} />}
+          <span>{data.known !== undefined ? "· " : ""}第 {data.station ?? data.known} 站</span>
         </span>
       )}
       {data.isNext && <span className="next-tag">下一步</span>}
@@ -528,7 +535,7 @@ export function ConceptCard({ data, selected }: NodeProps<CardNode>) {
       {/* Compact face: the first sentence or two of the prose; the drawer shows all of it. */}
       {(n.body || edits.get(n.id)?.after === n.body) && <AgentEditProse body={n.body} cardId={n.id} className="face-body" project={n.weight ? undefined : faceText} />}
       <CardSourceLine card={n} />
-      {data.weightActions && <WeightFooter card={n} actions={data.weightActions} />}
+      {data.weightActions && <WeightFooter card={n} actions={data.weightActions} known={data.known !== undefined} />}
       {!data.weightActions && data.isNext && data.onStartNext && (
         <button
           className="btn primary start-stop nodrag nopan"
