@@ -21,7 +21,6 @@ import {
   skipProbe,
   MAX_QUESTIONS,
 } from "../src/model/probe";
-import { afterChildSealed, isStuck, parseAnalogy, putOff } from "../src/model/stuck";
 import { parseWrap, sentences } from "../src/model/wrap";
 import { nextStep } from "../src/model/next-step";
 import { boardSchema } from "../src/shared/validation";
@@ -271,46 +270,6 @@ describe("frontier on the route", () => {
   it("an unfinished probe is the next step", () => {
     const b = board([node("q", "起点", null, 0, { question: true })], { probe: newProbe(ladder()) });
     expect(nextStep(b).kind).toBe("probe");
-  });
-});
-
-describe("stuck exits", () => {
-  const stuck = () =>
-    board(
-      [
-        node("q", "起点", null, 0, { question: true }),
-        node("a", "等待期", "q", 0, { status: "exploring", beat: "test", fails: 2 }),
-        node("b", "赔多少", "q", 1),
-      ],
-      { route: ["a", "b"] },
-    );
-  it("two wrong answers make a stop stuck", () => {
-    expect(isStuck(stuck().nodes[1])).toBe(true);
-    expect(isStuck({ ...stuck().nodes[1], fails: 1 })).toBe(false);
-  });
-  it("往下拆: split children come first, then the parent is tested again with a clean slate", () => {
-    let b = stuck();
-    b.nodes.push(node("a1", "观察期", "a", 0, { meta: { split: true } }), node("a2", "带病投保", "a", 1, { meta: { split: true } }));
-    expect(nextStep(b)).toMatchObject({ kind: "child", card: { id: "a1" }, station: 1 });
-    b = { ...b, nodes: b.nodes.map((n) => (n.id === "a1" ? { ...n, status: "explained" as const, seal: "test" as const } : n)) };
-    expect(afterChildSealed(b, "a1").nodes.find((n) => n.id === "a")!.fails).toBe(2);
-    b = { ...b, nodes: b.nodes.map((n) => (n.id === "a2" ? { ...n, status: "explained" as const, seal: "test" as const } : n)) };
-    b = afterChildSealed(b, "a2");
-    expect(b.nodes.find((n) => n.id === "a")).toMatchObject({ fails: 0, beat: "test" });
-    const s = nextStep(b);
-    expect(s).toMatchObject({ kind: "continue", card: { id: "a" }, beat: "test" });
-    expect("why" in s && s.why).toContain("回到这一站重新测");
-  });
-  it("稍后: back to 探索中, moved to the end; the next step moves on", () => {
-    const b = putOff(stuck(), "a");
-    expect(b.route).toEqual(["b", "a"]);
-    expect(b.nodes.find((n) => n.id === "a")).toMatchObject({ status: "exploring", fails: 0, meta: { later: true } });
-    expect(nextStep(b)).toMatchObject({ kind: "station", card: { id: "b" } });
-    expect(boardSchema.parse(b)).toBeTruthy();
-  });
-  it("换个类比 parses one short JSON reply", () => {
-    expect(parseAnalogy('{"analogy":"像新办的健身卡有冷静期。"}')).toBe("像新办的健身卡有冷静期。");
-    expect(parseAnalogy("nope")).toBeNull();
   });
 });
 

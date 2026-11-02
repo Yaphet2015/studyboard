@@ -5,7 +5,7 @@ import { routedBoard } from "./fixtures";
 import { gotoApp } from "./ready";
 
 /**
- * Flow redesign screenshots, phase 2 (摸底, stuck, 合起来讲). Not a regression test.
+ * Flow redesign screenshots, phase 2 (摸底, 合起来讲). Not a regression test.
  * Run with SHOTS_DIR=/path npx playwright test shots-flow-p2
  */
 const dir = process.env.SHOTS_DIR;
@@ -170,25 +170,6 @@ for (const mode of ["light", "dark"] as const) {
     await expect(page.locator(".drawer .plan-kind")).toHaveCount(0);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${dir}/probe-expert-result-${mode}.png` });
-  });
-
-  test(`卡住 · ${mode}`, async ({ page }) => {
-    await setup(page, mode);
-    const b = routedBoard();
-    b.nodes = b.nodes.filter((n: any) => n.parentId !== "c-when-not");
-    Object.assign(b.nodes.find((n: any) => n.id === "c-when-not"), { status: "exploring", beat: "test", fails: 1, guess: "怕带病投保", explain: "等待期内确诊一般不赔" });
-    await installFakeAtlas(page, true, "web", [b]);
-    await gotoApp(page);
-    await theme(page, mode);
-    await page.getByRole("region", { name: "下一步" }).getByRole("button", { name: /开始/ }).click();
-    const stop = page.getByRole("region", { name: "这一站" });
-    await stop.getByRole("radio", { name: /疾病定义/ }).click();
-    await stop.getByLabel("再用一句话说说为什么").fill("因为已经交过保费了");
-    await stop.getByRole("button", { name: /提交/ }).click();
-    await expect(stop.getByRole("group", { name: "卡住了" })).toBeVisible();
-    await page.setViewportSize({ width: 1440, height: 1240 });
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: `${dir}/05-stuck-${mode}.png` });
   });
 
   test(`合起来讲 · ${mode}`, async ({ page }) => {

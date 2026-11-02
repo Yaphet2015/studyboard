@@ -1,10 +1,9 @@
 /**
  * The one next step (spec §4.2), as a pure function. Rules, first hit wins:
  * 1 a stop with its four beats half done → continue that beat;
- * 3 children split off a stuck stop are unlearned → learn them first;
  * 4 the first unsealed stop in route order;
  * 6 every stop sealed → 合起来讲 (then "wrapped").
- * Before all of them: an unfinished 摸底 continues. Stops put off with 稍后 (meta.later) go last.
+ * Before all of them: an unfinished 摸底 continues.
  * (Rule 2, spaced review, is out of scope; rule 5 is offered only when a stop missed a point.)
  */
 import type { Beat, Board, ConceptNode } from "../shared/types";
@@ -14,7 +13,6 @@ const sealed = (card: ConceptNode) => mastered(card) || card.weight === "backgro
 
 export type NextStep =
   | { kind: "continue"; card: ConceptNode; station?: number; beat: Beat; why: string }
-  | { kind: "child"; card: ConceptNode; parent: ConceptNode; station?: number; why: string }
   | { kind: "station"; card: ConceptNode; station: number; why: string }
   | { kind: "deeper"; card: ConceptNode; station: number; why: string }
   | { kind: "wrap"; why: string }
@@ -57,13 +55,10 @@ export function nextStep(board: Board, skip: ReadonlySet<string> = new Set()): N
     }
     return undefined;
   };
-  const unlearnedSplit = (n: ConceptNode) =>
-    board.nodes.some((c) => c.parentId === n.id && !sealed(c));
-  // 1. A stop in progress (not one waiting for its split children, nor one put off for later).
+  // 1. A stop in progress.
   const inProgress = board.nodes.find(
     (n) =>
-      n.beat && n.beat !== "done" && !sealed(n) && !skip.has(n.id) && !n.meta?.later &&
-      !((n.fails ?? 0) >= 2 && unlearnedSplit(n)),
+      n.beat && n.beat !== "done" && !sealed(n) && !skip.has(n.id),
   );
   if (inProgress)
     return {
@@ -71,28 +66,11 @@ export function nextStep(board: Board, skip: ReadonlySet<string> = new Set()): N
       card: inProgress,
       station: stationFor(inProgress),
       beat: inProgress.beat!,
-      why: board.nodes.some((c) => c.parentId === inProgress.id && c.meta?.split)
-        ? "拆出来的小问题学完了，回到这一站重新测。"
-        : "这一站做到一半，接着把它走完。",
+      why: "这一站做到一半，接着把它走完。",
     };
-  // 3. Children split off a stuck stop.
-  for (const parent of board.nodes.filter((n) => (n.fails ?? 0) >= 2 && !sealed(n))) {
-    const child = board.nodes
-      .filter((n) => n.parentId === parent.id && !sealed(n) && !skip.has(n.id))
-      .sort((a, b) => a.order - b.order)[0];
-    if (child)
-      return {
-        kind: "child",
-        card: child,
-        parent,
-        station: stationFor(parent),
-        why: `「${parent.title}」卡住了，先学拆出来的小问题，学完回去重新测。`,
-      };
-  }
   // 4. The first unsealed stop.
   const open = route.filter((n) => !sealed(n));
   const pick =
-    open.find((n) => !skip.has(n.id) && !n.meta?.later) ??
     open.find((n) => !skip.has(n.id)) ??
     open[0];
   if (pick) {

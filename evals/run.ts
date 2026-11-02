@@ -19,7 +19,6 @@ import {
 import { buildMapFromAI, createEmptyBoard, newNote } from "../src/model/boards";
 import { contextForNote, leanForGeneration } from "../src/model/context";
 import { answerProbe, applyExpand, applyRefine, chainPrompt, newProbe, nextStep, parsePoints, probeOutcome, refinePrompt, localGrade } from "../src/model/probe";
-import { analogyPrompt, parseAnalogy } from "../src/model/stuck";
 import { parseWrap, wrapPrompt } from "../src/model/wrap";
 import {
   firstLevelPrompt,
