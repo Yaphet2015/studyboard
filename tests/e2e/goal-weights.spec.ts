@@ -388,3 +388,22 @@ for (const mode of ["light", "dark"] as const) {
     await screenshot(page, `seal-reviewed-${mode}`);
   });
 }
+
+// Seal spec A: a miss on a 已会 card fades the mark out over 240ms; reduced motion drops it at once.
+for (const motion of ["no-preference", "reduce"] as const) {
+  test(`revoked 已会 mark fades out (${motion})`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: motion });
+    const b = goalBoard();
+    const core = b.nodes.find((n: any) => n.id === "goal-core")!;
+    Object.assign(core, { seal: "probe", status: "unseen", beat: undefined });
+    await installFakeAtlas(page, true, "web", [b]);
+    await gotoApp(page);
+    await expect(card(page, "goal-core").locator(".known-mark")).toHaveCount(1);
+    await card(page, "goal-core").getByRole("button", { name: "复习一下" }).click();
+    await card(page, "goal-core").getByRole("button", { name: "所有图片使用相同说明", exact: true }).click();
+    await expect.poll(async () => (await disk(page)).nodes.find((n: any) => n.id === "goal-core").seal).toBe("probe-revoked");
+    if (motion === "reduce") await expect(card(page, "goal-core").locator(".known-mark.leaving")).toHaveCount(0);
+    await expect(card(page, "goal-core").locator(".known-mark")).toHaveCount(0);
+    await expect(card(page, "goal-core")).not.toHaveClass(/known-out/);
+  });
+}

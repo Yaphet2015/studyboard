@@ -5585,6 +5585,15 @@ h2.workspace-section span {
 .card.known:has(.weight-footer) { background: color-mix(in srgb, var(--card) 70%, var(--paper)); box-shadow: none; }
 .card.known:has(.weight-footer) h3 { color: var(--ink-2); }
 .card.known .face-body { color: var(--ink-3); }
+/* Revoked 已会: fade the mark and ease the quiet card back over 240ms (reduced motion: instant). */
+.card.known-out { transition: background-color 240ms var(--ease-out), box-shadow 240ms var(--ease-out); }
+.card.known-out h3, .card.known-out .face-body { transition: color 240ms var(--ease-out); }
+.card .station .known-mark.leaving { animation: known-out 240ms var(--ease-out) forwards; }
+@keyframes known-out { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .card.known-out, .card.known-out h3, .card.known-out .face-body { transition: none; }
+  .card .station .known-mark.leaving { animation: none; opacity: 0; }
+}
 .known-footer { display: flex; align-items: center; justify-content: space-between; }
 .known-footer .lab { color: var(--ink-3); font-size: 12px; }
 .progress .bar i.s-known { border: 1.25px dashed var(--ink-3); background: repeating-linear-gradient(135deg, var(--rule) 0 2px, transparent 2px 5px); }
