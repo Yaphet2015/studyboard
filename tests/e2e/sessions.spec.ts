@@ -70,7 +70,8 @@ test("sidebar conversations stay ordered, persist and reopen on their cards", as
   await expect(drawer.locator(".msg.user")).toHaveText("赔付次数怎么算？");
   await expect(card(page, "c-how")).toHaveClass(/selected/);
   await drawer.getByRole("button", { name: "关闭", exact: true }).click();
-  await card(page, "c-how").click();
+  // Asking on c-how promotes it (goal-weights), so its face now has a weight footer; click the title.
+  await card(page, "c-how").locator("h3").click();
   await expect(drawer.locator(".msg.user")).toHaveText("间隔期是多久？");
 });
 

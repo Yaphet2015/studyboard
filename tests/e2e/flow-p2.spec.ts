@@ -22,7 +22,10 @@ async function newQuestion(page: Page, topic: string) {
   await page.getByRole("button", { name: "开始探索", exact: true }).click();
 }
 
-test("摸底 v2: brackets the edge without levels or marks; stations below the start get the light seal", async ({ page }) => {
+// spec-v2 (goal-weights): a new question now opens the chat kickoff (产出物/成功标准/约束 3–5 题),
+// not the 摸底 probe, so this entry path is no longer reachable from 新问题. Kept for reference until the
+// probe code is either rewired or removed.
+test.skip("摸底 v2: brackets the edge without levels or marks; stations below the start get the light seal", async ({ page }) => {
   await installFakeAtlas(page);
   await newQuestion(page, "重疾险有哪些重要条款？");
   const probe = page.locator(".drawer").getByRole("region", { name: "摸底" });
@@ -110,7 +113,7 @@ test("a light-sealed stop can be rechecked; failing it removes the seal and queu
   await stop.getByRole("button", { name: "复查一下" }).click();
   await stop.getByRole("radio", { name: /不赔/ }).click();
   await stop.getByRole("button", { name: /提交/ }).click();
-  await expect(page.getByText(/去掉了浅印/)).toBeVisible();
+  await expect(page.getByText(/这一站排在下一步之后/)).toBeVisible();
   await expect
     .poll(async () => {
       const d = await disk(page);
@@ -119,7 +122,9 @@ test("a light-sealed stop can be rechecked; failing it removes the seal and queu
     .toEqual(["none", "c-when-not,c-what,c-how,c-money"]);
 });
 
-test("stuck after two wrong answers: three exits; 换个类比 goes back to 学, 往下拆 drafts two children", async ({ page }) => {
+// spec-v2 (goal-weights): the first wrong answer now promotes the card one weight level and swaps in
+// the choice footer (see flow.spec.ts), so the old two-wrong-answers 卡住了 exits are no longer reached.
+test.skip("stuck after two wrong answers: three exits; 换个类比 goes back to 学, 往下拆 drafts two children", async ({ page }) => {
   const b = bare();
   Object.assign(b.nodes.find((n: any) => n.id === "c-when-not"), { status: "exploring", beat: "test", fails: 1 });
   await installFakeAtlas(page, true, "web", [b]);
@@ -180,7 +185,7 @@ test("稍后 puts the stuck stop off to the end of the route", async ({ page }) 
   await page.getByRole("group", { name: "卡住了" }).getByRole("button", { name: /稍后/ }).click();
   await expect(bar).toContainText("下一步 · 第 2 站");
   await expect(bar).not.toContainText("等待期");
-  await expect(card(page, "c-when-not").locator(".station")).toHaveText("4");
+  await expect(card(page, "c-when-not").locator(".station")).toHaveText("第 4 站");
 });
 
 test("合起来讲: with every stop sealed, the root asks for the wrap-up; the stations it reaches light up", async ({ page }) => {
